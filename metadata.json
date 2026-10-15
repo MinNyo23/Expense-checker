@@ -1,0 +1,6 @@
+{
+  "name": "Couple Expense",
+  "description": "Shared daily expense tracker for couples with couple code pairing, real-time sync, visual trends, and Leaflet location map.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
