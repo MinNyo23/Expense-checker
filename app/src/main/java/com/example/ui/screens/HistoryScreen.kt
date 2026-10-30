@@ -16,8 +16,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -172,7 +172,7 @@ fun HistoryScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "Total: $${String.format(Locale.US, "%.2f", totalFilteredSum)}",
+                    text = "Total: ${com.example.util.FormatUtils.formatMmk(totalFilteredSum)}",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.primary
@@ -190,7 +190,7 @@ fun HistoryScreen(
                 verticalArrangement = Arrangement.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.ReceiptLong,
+                    imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                     modifier = Modifier.size(54.dp)

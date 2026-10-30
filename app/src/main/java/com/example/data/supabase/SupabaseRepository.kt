@@ -34,7 +34,7 @@ class SupabaseRepository(
             id = "demo-exp-1",
             couple_id = "demo-couple-uuid-1",
             user_name = "Alex",
-            amount = 45.50,
+            amount = 45000.0,
             category = ExpenseCategory.DATE_NIGHT.name,
             date = getTodayDate(),
             note = "Romantic dinner at Bella Italia 🍕",
@@ -46,10 +46,10 @@ class SupabaseRepository(
             id = "demo-exp-2",
             couple_id = "demo-couple-uuid-1",
             user_name = "Sam",
-            amount = 72.80,
+            amount = 72000.0,
             category = ExpenseCategory.GROCERIES.name,
             date = getTodayDate(),
-            note = "Weekly groceries at Whole Foods",
+            note = "Weekly groceries at Market",
             latitude = 37.7833,
             longitude = -122.4167,
             created_at = "2026-10-15T01:30:00Z"
@@ -58,7 +58,7 @@ class SupabaseRepository(
             id = "demo-exp-3",
             couple_id = "demo-couple-uuid-1",
             user_name = "Alex",
-            amount = 12.00,
+            amount = 12000.0,
             category = ExpenseCategory.COFFEE.name,
             date = getTodayDate(),
             note = "Morning iced lattes & croissant",
@@ -70,10 +70,10 @@ class SupabaseRepository(
             id = "demo-exp-4",
             couple_id = "demo-couple-uuid-1",
             user_name = "Sam",
-            amount = 28.50,
+            amount = 28000.0,
             category = ExpenseCategory.TRANSPORT.name,
             date = getTodayDate(),
-            note = "Uber ride to evening concert",
+            note = "Taxi ride to evening concert",
             latitude = 37.7900,
             longitude = -122.4000,
             created_at = "2026-10-15T02:15:00Z"
@@ -224,16 +224,29 @@ create table if not exists public.expenses (
     created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 3. Enable Supabase Realtime for instant live sync across devices
-alter publication supabase_realtime add table public.expenses;
+-- 3. Safely enable Supabase Realtime (avoids 42710 error if already added)
+do ${'$'}${'$'}
+begin
+  if not exists (
+    select 1 from pg_publication_tables 
+    where pubname = 'supabase_realtime' 
+      and schemaname = 'public' 
+      and tablename = 'expenses'
+  ) then
+    alter publication supabase_realtime add table public.expenses;
+  end if;
+end ${'$'}${'$'};
 
--- 4. Enable Row Level Security (RLS) and grant open couple access
+-- 4. Enable Row Level Security (RLS)
 alter table public.couples enable row level security;
 alter table public.expenses enable row level security;
 
+-- 5. Safe policies (drops previous if re-running)
+drop policy if exists "Allow all access to couples" on public.couples;
 create policy "Allow all access to couples" on public.couples 
     for all using (true) with check (true);
 
+drop policy if exists "Allow all access to expenses" on public.expenses;
 create policy "Allow all access to expenses" on public.expenses 
     for all using (true) with check (true);
 """

@@ -168,10 +168,10 @@ fun ExpenseItemCard(
                 horizontalAlignment = Alignment.End
             ) {
                 Text(
-                    text = "$${String.format(Locale.US, "%.2f", expense.amount)}",
+                    text = com.example.util.FormatUtils.formatMmk(expense.amount),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
+                        fontSize = 15.sp
                     ),
                     color = MaterialTheme.colorScheme.primary
                 )

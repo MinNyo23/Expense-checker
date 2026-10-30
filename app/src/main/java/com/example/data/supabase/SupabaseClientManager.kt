@@ -54,10 +54,12 @@ class SupabaseClientManager(
 ) {
     private val tag = "SupabaseClientManager"
 
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
         encodeDefaults = true
+        explicitNulls = false
     }
 
     private val httpClient = OkHttpClient.Builder()
@@ -134,18 +136,21 @@ class SupabaseClientManager(
     }
 
     suspend fun createCouple(coupleCode: String): Result<Couple> = withContext(Dispatchers.IO) {
-        val newCouple = Couple(
+        val code = coupleCode.trim().uppercase()
+        val localCouple = Couple(
             id = UUID.randomUUID().toString(),
-            couple_code = coupleCode.trim().uppercase()
+            couple_code = code,
+            created_at = SupabaseRepository.getTodayIso()
         )
 
         if (!isConfigured()) {
-            return@withContext Result.success(newCouple)
+            return@withContext Result.success(localCouple)
         }
 
         try {
             val url = "${getSupabaseUrl()}/rest/v1/couples"
-            val jsonBody = json.encodeToString(newCouple)
+            // Send clean payload without nulls so Supabase Postgres uses default values
+            val jsonBody = """{"couple_code":"$code"}"""
             val request = Request.Builder()
                 .url(url)
                 .addHeader("apikey", getSupabaseKey())
@@ -156,17 +161,27 @@ class SupabaseClientManager(
                 .build()
 
             httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    val err = response.body?.string()
-                    return@withContext Result.failure(IOException("Failed to create couple: ${response.code} $err"))
-                }
                 val body = response.body?.string().orEmpty()
-                val created = json.decodeFromString<List<Couple>>(body).firstOrNull() ?: newCouple
+                if (!response.isSuccessful) {
+                    val friendlyMsg = when (response.code) {
+                        401 -> "401 Unauthorized: Invalid Supabase Anon Key. Please check the API key in Settings (⚙️)."
+                        404 -> "404 Not Found: 'couples' table was not found in your Supabase database. Please run the SQL schema script in Supabase SQL Editor."
+                        403, 42501 -> "Permission Denied: Please check Row Level Security (RLS) policies in Supabase."
+                        else -> "Supabase Error ${response.code}: $body"
+                    }
+                    return@withContext Result.failure(IOException(friendlyMsg))
+                }
+                val created = json.decodeFromString<List<Couple>>(body).firstOrNull() ?: localCouple
                 Result.success(created)
             }
         } catch (e: Exception) {
             Log.e(tag, "Error inserting couple", e)
-            Result.failure(e)
+            val friendly = if (e.message?.contains("Unable to resolve host") == true) {
+                "Unable to connect to Supabase: Check device internet or Project URL in Settings (⚙️)."
+            } else {
+                e.message ?: "Failed to connect to Supabase"
+            }
+            Result.failure(IOException(friendly, e))
         }
     }
 

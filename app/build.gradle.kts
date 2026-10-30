@@ -109,6 +109,11 @@ dependencies {
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   implementation(libs.kotlinx.serialization.json)
+  // Supabase Kotlin SDK
+  implementation(platform(libs.supabase.bom))
+  implementation(libs.supabase.postgrest)
+  implementation(libs.supabase.realtime)
+  implementation(libs.ktor.client.okhttp)
   implementation(libs.firebase.ai)
   // Uncomment to use Firestore:
   // implementation(libs.firebase.firestore)

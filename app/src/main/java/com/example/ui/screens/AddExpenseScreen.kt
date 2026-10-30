@@ -26,7 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LocationOn
@@ -155,7 +155,7 @@ fun AddExpenseScreen(
                 title = { Text("Log Couple Expense", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -193,21 +193,21 @@ fun AddExpenseScreen(
                                 amountText = input
                             }
                         },
-                        placeholder = { Text("0.00", fontSize = 28.sp) },
+                        placeholder = { Text("0", fontSize = 26.sp) },
                         leadingIcon = {
                             Text(
-                                "$",
-                                fontSize = 28.sp,
+                                "MMK",
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(start = 8.dp)
+                                modifier = Modifier.padding(start = 12.dp)
                             )
                         },
                         textStyle = MaterialTheme.typography.headlineMedium.copy(
                             fontWeight = FontWeight.Bold,
-                            fontSize = 28.sp
+                            fontSize = 26.sp
                         ),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -217,17 +217,25 @@ fun AddExpenseScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Preset Quick Chips
+                    // Preset Quick Chips for MMK
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf(5.0, 10.0, 20.0, 50.0).forEach { preset ->
+                        listOf(5000.0, 10000.0, 50000.0, 100000.0).forEach { preset ->
+                            val label = when (preset) {
+                                5000.0 -> "+5K"
+                                10000.0 -> "+10K"
+                                50000.0 -> "+50K"
+                                100000.0 -> "+100K"
+                                else -> "+${preset.toInt()}"
+                            }
                             SuggestionChip(
                                 onClick = {
                                     val current = amountText.toDoubleOrNull() ?: 0.0
-                                    amountText = String.format(Locale.US, "%.2f", current + preset)
+                                    amountText = (current + preset).toLong().toString()
                                 },
-                                label = { Text("+$${preset.toInt()}") }
+                                label = { Text(label, fontSize = 12.sp) }
                             )
                         }
                     }

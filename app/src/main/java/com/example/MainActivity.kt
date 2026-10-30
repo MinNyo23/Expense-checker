@@ -11,10 +11,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -118,7 +118,7 @@ fun MainAppContent(viewModel: CoupleExpenseViewModel) {
                     NavigationBarItem(
                         selected = currentScreen == AppDestination.HISTORY,
                         onClick = { currentScreen = AppDestination.HISTORY },
-                        icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "History") },
+                        icon = { Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = "History") },
                         label = { Text("History") },
                         modifier = Modifier.testTag("nav_item_history")
                     )

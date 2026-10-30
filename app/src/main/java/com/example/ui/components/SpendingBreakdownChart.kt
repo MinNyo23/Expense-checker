@@ -73,7 +73,7 @@ fun SpendingBreakdownChart(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
                 Text(
-                    text = "$${String.format(Locale.US, "%.2f", totalAmount)}",
+                    text = com.example.util.FormatUtils.formatMmk(totalAmount),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -129,8 +129,8 @@ fun SpendingBreakdownChart(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "$${String.format(Locale.US, "%.0f", totalAmount)}",
-                            fontSize = 18.sp,
+                            text = com.example.util.FormatUtils.formatMmk(totalAmount),
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )

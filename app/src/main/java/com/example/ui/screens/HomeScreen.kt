@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.app.DatePickerDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -24,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Favorite
@@ -32,6 +34,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Today
+import com.example.util.FormatUtils
+import java.util.Calendar
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -43,6 +47,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.ExpenseItemCard
+import com.example.ui.components.SetLoveDateDialog
 import com.example.ui.components.SpendingBreakdownChart
 import com.example.ui.theme.PartnerAColor
 import com.example.ui.theme.PartnerBColor
@@ -73,6 +81,7 @@ fun HomeScreen(
     val expenses by viewModel.expenses.collectAsState()
     val summary by viewModel.dashboardSummary.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    var showLoveDateDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -174,6 +183,261 @@ fun HomeScreen(
                 }
             }
 
+            // Love Days Counter Card
+            item {
+                val loveDays = remember(userSession.relationshipStartDate) {
+                    FormatUtils.calculateLoveDays(userSession.relationshipStartDate)
+                }
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showLoveDateDialog = true }
+                        .testTag("love_days_card"),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Favorite,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Love Days 💕",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
+
+                            Surface(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { showLoveDateDialog = true },
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CalendarMonth,
+                                        contentDescription = "Set Date",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Change Date",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Prominent Total Days Display
+                        val totalDays = loveDays?.totalDays ?: 0L
+                        val years = loveDays?.years ?: 0
+                        val months = loveDays?.months ?: 0
+                        val days = loveDays?.days ?: 0
+
+                        Row(
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "$totalDays",
+                                fontSize = 46.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                letterSpacing = (-1.5).sp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.padding(bottom = 8.dp)) {
+                                Text(
+                                    text = "TOTAL DAYS",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    letterSpacing = 1.sp
+                                )
+                                Text(
+                                    text = "in Love Together",
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Combined Sentence Breakdown
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "⏳ $years ${if (years == 1) "Year" else "Years"}, $months ${if (months == 1) "Month" else "Months"} and $days ${if (days == 1) "Day" else "Days"}",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 12.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Year, Month, Days, Total Days 4-Cards Grid
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Year Tile
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 2.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = "$years",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 17.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = if (years == 1) "Year" else "Years",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            // Month Tile
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 2.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = "$months",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 17.sp,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                    Text(
+                                        text = if (months == 1) "Month" else "Months",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            // Days Tile
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 2.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = "$days",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 17.sp,
+                                        color = MaterialTheme.colorScheme.tertiary
+                                    )
+                                    Text(
+                                        text = if (days == 1) "Day" else "Days",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            // Total Days Tile
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 2.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = "$totalDays",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 17.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Total Days",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Anniversary footer
+                        Text(
+                            text = if (loveDays != null) "Together since ${loveDays.startDateFormatted} 📅 (Tap to edit)" else "Tap to set Date, Month & Year 💕",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                        )
+                    }
+                }
+            }
+
             // Summary Stats Cards (Today & This Month)
             item {
                 Row(
@@ -204,10 +468,10 @@ fun HomeScreen(
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "$${String.format(Locale.US, "%.2f", summary.todayTotal)}",
+                                text = FormatUtils.formatMmk(summary.todayTotal),
                                 style = MaterialTheme.typography.headlineSmall.copy(
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp
+                                    fontSize = 17.sp
                                 ),
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -238,10 +502,10 @@ fun HomeScreen(
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "$${String.format(Locale.US, "%.2f", summary.monthTotal)}",
+                                text = FormatUtils.formatMmk(summary.monthTotal),
                                 style = MaterialTheme.typography.headlineSmall.copy(
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp
+                                    fontSize = 17.sp
                                 ),
                                 color = MaterialTheme.colorScheme.secondary
                             )
@@ -295,8 +559,8 @@ fun HomeScreen(
                                             }
                                             Spacer(modifier = Modifier.height(6.dp))
                                             Text(
-                                                text = "$${String.format(Locale.US, "%.2f", partner.amount)}",
-                                                fontSize = 16.sp,
+                                                text = FormatUtils.formatMmk(partner.amount),
+                                                fontSize = 15.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
@@ -413,5 +677,15 @@ fun HomeScreen(
         ) {
             Icon(Icons.Default.Add, contentDescription = "Add Expense")
         }
+    }
+
+    if (showLoveDateDialog) {
+        SetLoveDateDialog(
+            initialDateStr = userSession.relationshipStartDate,
+            onDateSaved = { newDate ->
+                viewModel.updateLoveStartDate(newDate)
+            },
+            onDismiss = { showLoveDateDialog = false }
+        )
     }
 }

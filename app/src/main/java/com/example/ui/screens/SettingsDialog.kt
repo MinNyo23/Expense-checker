@@ -3,9 +3,9 @@ package com.example.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,20 +21,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudQueue
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Sync
+import com.example.ui.components.SetLoveDateDialog
+import com.example.util.FormatUtils
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,11 +52,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.supabase.SupabaseRepository
 import com.example.ui.viewmodel.CoupleExpenseViewModel
 
 @Composable
@@ -64,34 +65,45 @@ fun SettingsDialog(
 ) {
     val context = LocalContext.current
     val userSession by viewModel.userSession.collectAsState()
+    var showDisconnectConfirm by remember { mutableStateOf(false) }
+    var showLoveDateDialog by remember { mutableStateOf(false) }
 
-    var supabaseUrl by remember(userSession) {
-        mutableStateOf(
-            if (userSession.customSupabaseUrl.isNotBlank()) userSession.customSupabaseUrl
-            else viewModel.clientManager.getSupabaseUrl()
+    if (showDisconnectConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDisconnectConfirm = false },
+            title = { Text("Unpair Couple Group?") },
+            text = { Text("Are you sure you want to disconnect from this couple group? You can rejoin anytime using code '${userSession.coupleCode}'.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.disconnectCouple()
+                        showDisconnectConfirm = false
+                        onDismiss()
+                    }
+                ) {
+                    Text("Unpair", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDisconnectConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
-    var supabaseKey by remember(userSession) {
-        mutableStateOf(
-            if (userSession.customSupabaseKey.isNotBlank()) userSession.customSupabaseKey
-            else viewModel.clientManager.getSupabaseKey()
-        )
-    }
-
-    var showSqlSchema by remember { mutableStateOf(false) }
-    val isLiveConfigured = viewModel.clientManager.isConfigured()
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = Icons.Default.Storage,
+                    imageVector = Icons.Default.Favorite,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Supabase & Couple Settings", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text("Couple Settings", fontWeight = FontWeight.Bold, fontSize = 20.sp)
             }
         },
         text = {
@@ -99,182 +111,257 @@ fun SettingsDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Connection Status Pill
+                // Sync Status Banner
                 Surface(
-                    color = if (isLiveConfigured) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                    shape = RoundedCornerShape(12.dp)
+                    color = Color(0xFFE8F5E9),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
+                            .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
                                 .size(10.dp)
                                 .clip(CircleShape)
-                                .background(if (isLiveConfigured) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary)
+                                .background(Color(0xFF2E7D32))
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = if (isLiveConfigured) "Connected to Live Supabase" else "Local / Demo Sync Active",
+                                text = "Live Shared Sync Active",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
-                                color = if (isLiveConfigured) Color(0xFF1B5E20) else MaterialTheme.colorScheme.onPrimaryContainer
+                                color = Color(0xFF1B5E20)
                             )
                             Text(
-                                text = if (isLiveConfigured) "Realtime WebSocket active" else "Couple code '${userSession.coupleCode}' ready",
+                                text = "Expenses and map pins sync across devices instantly.",
                                 fontSize = 11.sp,
-                                color = if (isLiveConfigured) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = Color(0xFF2E7D32)
                             )
                         }
                     }
                 }
 
-                // Couple Code Display with copy
+                // Couple Code Card with 1-tap Copy & Share
                 if (userSession.coupleCode.isNotBlank()) {
-                    Column {
-                        Text("Active Couple Code", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                        )
+                    ) {
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
+                                text = "Your Shared Couple Code",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
                                 text = userSession.coupleCode,
+                                fontSize = 32.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 18.sp,
-                                letterSpacing = 2.sp,
+                                letterSpacing = 4.sp,
                                 color = MaterialTheme.colorScheme.primary
                             )
-                            IconButton(
-                                onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("Couple Code", userSession.coupleCode))
-                                    Toast.makeText(context, "Copied Couple Code!", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.size(32.dp)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy Code", modifier = Modifier.size(16.dp))
+                                Button(
+                                    onClick = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("Couple Code", userSession.coupleCode))
+                                        Toast.makeText(context, "Copied Couple Code!", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Copy Code", fontSize = 12.sp)
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        val sendIntent = Intent().apply {
+                                            action = Intent.ACTION_SEND
+                                            putExtra(
+                                                Intent.EXTRA_TEXT,
+                                                "Join my shared couple budget on Couple Expense! Our couple code is: ${userSession.coupleCode}"
+                                            )
+                                            type = "text/plain"
+                                        }
+                                        val shareIntent = Intent.createChooser(sendIntent, "Share Couple Code")
+                                        context.startActivity(shareIntent)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Share", fontSize = 12.sp)
+                                }
                             }
                         }
                     }
                 }
 
-                // Supabase URL Input
-                Column {
-                    Text("Supabase Project URL", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    OutlinedTextField(
-                        value = supabaseUrl,
-                        onValueChange = { supabaseUrl = it },
-                        placeholder = { Text("https://xyzcompany.supabase.co") },
-                        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
+                // Anniversary Date (Love Days) Card
+                val loveDays = remember(userSession.relationshipStartDate) {
+                    FormatUtils.calculateLoveDays(userSession.relationshipStartDate)
                 }
 
-                // Supabase Anon Key Input
-                Column {
-                    Text("Supabase Anon Key", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    OutlinedTextField(
-                        value = supabaseKey,
-                        onValueChange = { supabaseKey = it },
-                        placeholder = { Text("eyJhbGciOi...") },
-                        leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                }
-
-                // Save credentials button
-                Button(
-                    onClick = {
-                        viewModel.updateSupabaseCredentials(supabaseUrl, supabaseKey)
-                        Toast.makeText(context, "Supabase credentials updated!", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    Icon(Icons.Default.CloudDone, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Save & Connect")
-                }
-
-                // Toggle Supabase SQL Schema snippet
-                OutlinedButton(
-                    onClick = { showSqlSchema = !showSqlSchema },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(if (showSqlSchema) "Hide SQL Setup Script" else "View Supabase SQL Schema")
-                }
-
-                if (showSqlSchema) {
-                    Column(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFF1E1E24), RoundedCornerShape(10.dp))
-                            .padding(12.dp)
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Text("SQL Schema Script", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            IconButton(
-                                onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("Supabase SQL", SupabaseRepository.SUPABASE_SQL_SETUP_SCRIPT))
-                                    Toast.makeText(context, "SQL copied to clipboard!", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.size(28.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy SQL", tint = Color.White, modifier = Modifier.size(16.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Favorite,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Love Anniversary",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = if (loveDays != null) {
+                                        "${loveDays.startDateFormatted} (${loveDays.totalDays} Total Days)"
+                                    } else {
+                                        "Not set yet"
+                                    },
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (loveDays != null) {
+                                    Text(
+                                        text = "${loveDays.years}y ${loveDays.months}m ${loveDays.days}d",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = SupabaseRepository.SUPABASE_SQL_SETUP_SCRIPT,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 10.sp,
-                            color = Color(0xFFCE9178),
-                            modifier = Modifier.horizontalScroll(rememberScrollState())
-                        )
+
+                        Button(
+                            onClick = { showLoveDateDialog = true },
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Edit Date", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
 
-                // Disconnect session
+                // Profile Card
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = userSession.userName.ifBlank { "You" },
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                            Text(
+                                text = "Device Profile Name",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // Unpair Option
                 if (userSession.isPaired) {
                     TextButton(
-                        onClick = {
-                            viewModel.disconnectCouple()
-                            onDismiss()
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                        onClick = { showDisconnectConfirm = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("unpair_couple_button")
                     ) {
-                        Text("Disconnect / Unpair Couple", color = MaterialTheme.colorScheme.error)
+                        Text(
+                            text = "Unpair / Switch Couple Code",
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close", fontWeight = FontWeight.Bold)
+                Text("Done", fontWeight = FontWeight.Bold)
             }
         }
     )
+
+    if (showLoveDateDialog) {
+        SetLoveDateDialog(
+            initialDateStr = userSession.relationshipStartDate,
+            onDateSaved = { newDate ->
+                viewModel.updateLoveStartDate(newDate)
+            },
+            onDismiss = { showLoveDateDialog = false }
+        )
+    }
 }

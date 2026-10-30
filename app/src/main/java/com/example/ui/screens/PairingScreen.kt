@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.AddLink
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Settings
@@ -76,6 +77,7 @@ fun PairingScreen(
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Create, 1 = Join
     var generatedCode by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val scrollState = rememberScrollState()
 
@@ -279,12 +281,14 @@ fun PairingScreen(
                                 Toast.makeText(context, "Please enter your name first", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
+                            errorMessage = null
                             isLoading = true
                             viewModel.createCouple(userName) { success, msg ->
                                 isLoading = false
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                 if (success) {
-                                    // Successfully coupled
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                } else {
+                                    errorMessage = msg
                                 }
                             }
                         },
@@ -351,10 +355,15 @@ fun PairingScreen(
                                 Toast.makeText(context, "Please enter the couple code", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
+                            errorMessage = null
                             isLoading = true
                             viewModel.joinCouple(userName, coupleCodeInput) { success, msg ->
                                 isLoading = false
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                if (success) {
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                } else {
+                                    errorMessage = msg
+                                }
                             }
                         },
                         modifier = Modifier
@@ -370,6 +379,70 @@ fun PairingScreen(
                             Icon(Icons.Default.AddLink, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Join & Link Devices", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Error message card
+        if (errorMessage != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Connection Notice",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 14.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = errorMessage ?: "",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                errorMessage = null
+                                viewModel.createCouple(userName) { success, msg ->
+                                    if (!success) errorMessage = msg
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Retry", fontSize = 12.sp)
+                        }
+                        Button(
+                            onClick = {
+                                if (userName.isBlank()) userName = "User"
+                                viewModel.createCoupleOffline(userName) { _, msg ->
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Enter App", fontSize = 12.sp)
                         }
                     }
                 }

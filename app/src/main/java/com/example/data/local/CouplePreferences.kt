@@ -18,7 +18,8 @@ data class UserSession(
     val coupleCode: String = "",
     val isPaired: Boolean = false,
     val customSupabaseUrl: String = "",
-    val customSupabaseKey: String = ""
+    val customSupabaseKey: String = "",
+    val relationshipStartDate: String = "2024-02-14"
 )
 
 class CouplePreferences(private val context: Context) {
@@ -30,6 +31,7 @@ class CouplePreferences(private val context: Context) {
         val KEY_IS_PAIRED = booleanPreferencesKey("is_paired")
         val KEY_SUPABASE_URL = stringPreferencesKey("supabase_url")
         val KEY_SUPABASE_KEY = stringPreferencesKey("supabase_key")
+        val KEY_LOVE_START_DATE = stringPreferencesKey("love_start_date")
     }
 
     val userSessionFlow: Flow<UserSession> = context.dataStore.data.map { preferences ->
@@ -39,7 +41,8 @@ class CouplePreferences(private val context: Context) {
             coupleCode = preferences[KEY_COUPLE_CODE] ?: "",
             isPaired = preferences[KEY_IS_PAIRED] ?: false,
             customSupabaseUrl = preferences[KEY_SUPABASE_URL] ?: "",
-            customSupabaseKey = preferences[KEY_SUPABASE_KEY] ?: ""
+            customSupabaseKey = preferences[KEY_SUPABASE_KEY] ?: "",
+            relationshipStartDate = preferences[KEY_LOVE_START_DATE] ?: "2024-02-14"
         )
     }
 
@@ -49,6 +52,12 @@ class CouplePreferences(private val context: Context) {
             prefs[KEY_COUPLE_ID] = coupleId
             prefs[KEY_COUPLE_CODE] = coupleCode
             prefs[KEY_IS_PAIRED] = true
+        }
+    }
+
+    suspend fun updateRelationshipStartDate(date: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LOVE_START_DATE] = date
         }
     }
 

@@ -189,7 +189,7 @@ private fun generateLeafletHtml(jsonExpenses: String): String {
         expenses.forEach(item => {
             const pinIcon = L.divIcon({
                 className: 'custom-div-icon',
-                html: `<div class="custom-pin" style="background-color: ${'$'}{item.color}; width: 28px; height: 28px;">$</div>`,
+                html: `<div class="custom-pin" style="background-color: ${'$'}{item.color}; width: 28px; height: 28px; font-size: 11px;">Ks</div>`,
                 iconSize: [28, 28],
                 iconAnchor: [14, 14],
                 popupAnchor: [0, -14]
@@ -199,7 +199,7 @@ private fun generateLeafletHtml(jsonExpenses: String): String {
             
             const popupHtml = `
                 <div class="popup-card" onclick="if(window.AndroidBridge){ AndroidBridge.onMarkerSelected('${'$'}{item.id}'); }">
-                    <div class="popup-amount">$${'$'}{Number(item.amount).toFixed(2)}</div>
+                    <div class="popup-amount">${'$'}{Math.round(item.amount).toLocaleString()} MMK</div>
                     <div class="popup-title">${'$'}{item.note}</div>
                     <div class="popup-badge" style="background-color: ${'$'}{item.color}">${'$'}{item.userName}</div>
                     <div class="popup-meta">🏷️ ${'$'}{item.category} • 📅 ${'$'}{item.date}</div>

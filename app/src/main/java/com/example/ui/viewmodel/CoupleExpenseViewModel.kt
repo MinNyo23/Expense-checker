@@ -116,6 +116,25 @@ class CoupleExpenseViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
+    fun createCoupleOffline(userName: String, onResult: (Boolean, String) -> Unit) {
+        if (userName.isBlank()) {
+            onResult(false, "Please enter your name")
+            return
+        }
+        val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        val code = (1..6).map { chars.random() }.joinToString("")
+        val coupleId = UUID.randomUUID().toString()
+        viewModelScope.launch {
+            preferences.saveSession(
+                userName = userName.trim(),
+                coupleId = coupleId,
+                coupleCode = code
+            )
+            repository.initCoupleSession(coupleId)
+            onResult(true, "Created offline couple code: $code")
+        }
+    }
+
     fun joinCouple(userName: String, coupleCode: String, onResult: (Boolean, String) -> Unit) {
         if (userName.isBlank()) {
             onResult(false, "Please enter your name")
@@ -182,12 +201,19 @@ class CoupleExpenseViewModel(application: Application) : AndroidViewModel(applic
             _isRefreshing.value = false
 
             result.onSuccess {
-                _userMessage.value = "Added $${String.format(Locale.US, "%.2f", amount)} for ${category.title}"
+                _userMessage.value = "Added ${com.example.util.FormatUtils.formatMmk(amount)} for ${category.title}"
                 onResult(true)
             }.onFailure { err ->
                 _userMessage.value = "Error: ${err.message}"
                 onResult(false)
             }
+        }
+    }
+
+    fun updateLoveStartDate(date: String) {
+        viewModelScope.launch {
+            preferences.updateRelationshipStartDate(date)
+            _userMessage.value = "Anniversary date updated! 💕"
         }
     }
 

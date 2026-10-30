@@ -286,7 +286,7 @@ fun MapScreen(
                             }
 
                             Text(
-                                text = "$${String.format(Locale.US, "%.2f", exp.amount)}",
+                                text = com.example.util.FormatUtils.formatMmk(exp.amount),
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = MaterialTheme.colorScheme.primary

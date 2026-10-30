@@ -55,4 +55,21 @@ class ExampleUnitTest {
         val unknownCat = ExpenseCategory.fromString("NonExistent")
         assertEquals(ExpenseCategory.OTHER, unknownCat)
     }
+
+    @Test
+    fun mmk_formatting_isCorrect() {
+        val formatted = com.example.util.FormatUtils.formatMmk(50000.0)
+        assertTrue(formatted.contains("50,000 MMK"))
+    }
+
+    @Test
+    fun love_days_calculation_isCorrect() {
+        val info = com.example.util.FormatUtils.calculateLoveDays("2024-02-14")
+        assertNotNull(info)
+        assertTrue(info!!.totalDays > 0)
+        assertTrue(info.years >= 0)
+        assertTrue(info.months in 0..11)
+        assertTrue(info.days >= 0)
+        assertTrue(info.formattedBreakdown.contains("Year") || info.formattedBreakdown.contains("Month"))
+    }
 }
