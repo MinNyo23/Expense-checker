@@ -6,6 +6,7 @@ import com.example.data.model.ExpenseCategory
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -143,13 +144,23 @@ class ExampleUnitTest {
     }
 
     @Test
-    fun hardened_supabase_sql_script_contains_security_constraints() {
-        val sql = com.example.data.supabase.SupabaseRepository.SUPABASE_SQL_SETUP_SCRIPT
-        assertTrue(sql.contains("check (amount > 0"))
-        assertTrue(sql.contains("idx_couples_code"))
-        assertTrue(sql.contains("idx_expenses_couple_date"))
-        assertTrue(sql.contains("row level security"))
-        assertTrue(sql.contains("Allow couple code lookup"))
+    fun private_image_paths_reject_public_urls_and_traversal() {
+        val valid = "auth-user-123/550e8400-e29b-41d4-a716-446655440000.webp"
+        assertTrue(com.example.data.repository.ImageStorageRepository.isValidPrivateObjectPath(valid))
+        assertFalse(com.example.data.repository.ImageStorageRepository.isValidPrivateObjectPath("https://example.com/image.webp"))
+        assertFalse(com.example.data.repository.ImageStorageRepository.isValidPrivateObjectPath("auth-user-123/../image.webp"))
+        assertFalse(com.example.data.repository.ImageStorageRepository.isValidPrivateObjectPath("/auth-user-123/image.webp"))
+    }
+
+    @Test
+    fun image_magic_bytes_are_required_for_allowed_types() {
+        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())
+        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        val fake = "not-an-image".encodeToByteArray()
+
+        assertEquals("image/jpeg", com.example.data.repository.ImageStorageRepository.detectMimeTypeFromMagicBytes(jpeg))
+        assertEquals("image/png", com.example.data.repository.ImageStorageRepository.detectMimeTypeFromMagicBytes(png))
+        assertTrue(com.example.data.repository.ImageStorageRepository.detectMimeTypeFromMagicBytes(fake) == null)
     }
 
     @Test
@@ -209,15 +220,6 @@ class ExampleUnitTest {
     }
 
     @Test
-    fun supabase_sql_contains_profiles_table_and_realtime() {
-        val sql = com.example.data.supabase.SupabaseRepository.SUPABASE_SQL_SETUP_SCRIPT
-        assertTrue(sql.contains("create table if not exists public.profiles"))
-        assertTrue(sql.contains("idx_profiles_couple"))
-        assertTrue(sql.contains("tablename = 'profiles'"))
-        assertTrue(sql.contains("Allow couple profile access"))
-    }
-
-    @Test
     fun couple_memo_serialization_isCorrect() {
         val memo = com.example.data.model.CoupleMemo(
             id = "memo-1",
@@ -239,15 +241,6 @@ class ExampleUnitTest {
         assertEquals("Alex", deserialized.user_name)
         assertEquals("Sunset at the beach 🌅", deserialized.title)
         assertEquals("2026-11-01", deserialized.date)
-    }
-
-    @Test
-    fun supabase_sql_contains_memos_table_and_realtime() {
-        val sql = com.example.data.supabase.SupabaseRepository.SUPABASE_SQL_SETUP_SCRIPT
-        assertTrue(sql.contains("create table if not exists public.memos"))
-        assertTrue(sql.contains("idx_memos_couple_date"))
-        assertTrue(sql.contains("tablename = 'memos'"))
-        assertTrue(sql.contains("Allow couple memo access"))
     }
 
     @Test
@@ -278,9 +271,6 @@ class ExampleUnitTest {
         assertEquals(5, parsed.memos_count)
         assertEquals(2, parsed.profiles_count)
         assertEquals(1763200000000L, parsed.live_locations_latest)
-
-        val sql = com.example.data.supabase.SupabaseRepository.SUPABASE_SQL_SETUP_SCRIPT
-        assertTrue(sql.contains("function public.get_couple_sync_counts"))
     }
 
     @Test

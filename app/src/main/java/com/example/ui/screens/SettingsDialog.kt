@@ -51,7 +51,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import com.example.data.supabase.SupabaseClientManager
-import com.example.data.supabase.SupabaseRepository
 import com.example.ui.components.SetLoveDateDialog
 import com.example.util.FormatUtils
 import com.example.util.PermissionHelper
@@ -655,53 +654,6 @@ fun SettingsDialog(
                             }
                         }
 
-                        // 4. Supabase Security & Hardened RLS Script
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Code,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
-                                        Text(
-                                            text = "Supabase Database Hardening",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                        Text(
-                                            text = "Enforces check constraints, anti-DoS indexes & RLS",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-
-                                OutlinedButton(
-                                    onClick = {
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                        clipboard?.setPrimaryClip(
-                                            ClipData.newPlainText("Hardened Supabase SQL", SupabaseRepository.SUPABASE_SQL_SETUP_SCRIPT)
-                                        )
-                                        Toast.makeText(context, "Copied Hardened SQL Script! Paste in Supabase SQL Editor.", Toast.LENGTH_LONG).show()
-                                    },
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Copy Hardened Supabase SQL", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
                     }
                 }
 
@@ -1300,4 +1252,3 @@ fun SettingsDialog(
         )
     }
 }
-
