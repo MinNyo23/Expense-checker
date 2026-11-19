@@ -103,7 +103,7 @@ class ExampleRobolectricTest {
       couple_id = "couple-uuid-1",
       couple_code = "LOVE24",
       user_name = "MinNyo",
-      email = "minnyo.work@gmail.com",
+      email = "test@example.com",
       device_name = "Pixel 8",
       is_active = true,
       last_login_at = "2026-11-13T10:00:00Z"
@@ -146,40 +146,40 @@ class ExampleRobolectricTest {
 
     // 1. Register new couple account with password
     val regResult = repository.registerWithPassword(
-      email = "minnyo.work@gmail.com",
+      email = "test@example.com",
       password = "InitialPassword1",
       userName = "Min Nyo",
       createNewCouple = true
     )
     assertTrue(regResult.isSuccess)
     val auth = regResult.getOrThrow()
-    assertEquals("minnyo.work@gmail.com", auth.email)
+    assertEquals("test@example.com", auth.email)
     assertEquals("Min Nyo", auth.user_name)
 
     // 2. Wrong password fails, correct password succeeds
-    val wrongLogin = repository.loginWithPassword("minnyo.work@gmail.com", "WrongPass99")
+    val wrongLogin = repository.loginWithPassword("test@example.com", "WrongPass99")
     assertTrue(wrongLogin.isFailure)
 
-    val validLogin = repository.loginWithPassword("minnyo.work@gmail.com", "InitialPassword1")
+    val validLogin = repository.loginWithPassword("test@example.com", "InitialPassword1")
     assertTrue(validLogin.isSuccess)
 
     // 3. Change password
-    val changeRes = repository.changeAccountPassword("minnyo.work@gmail.com", "InitialPassword1", "UpdatedPass2")
+    val changeRes = repository.changeAccountPassword("test@example.com", "InitialPassword1", "UpdatedPass2")
     assertTrue(changeRes.isSuccess)
-    assertTrue(repository.loginWithPassword("minnyo.work@gmail.com", "UpdatedPass2").isSuccess)
+    assertTrue(repository.loginWithPassword("test@example.com", "UpdatedPass2").isSuccess)
 
     // 4. Forgot Password OTP generation & reset
-    val otpPrep = repository.createPasswordResetOtpInternal("minnyo.work@gmail.com", "482910")
+    val otpPrep = repository.createPasswordResetOtpInternal("test@example.com", "482910")
     assertTrue(otpPrep.isSuccess)
 
     // Wrong OTP rejected
-    val badOtp = repository.verifyOtpAndResetPassword("minnyo.work@gmail.com", "000000", "FinalPass3")
+    val badOtp = repository.verifyOtpAndResetPassword("test@example.com", "000000", "FinalPass3")
     assertTrue(badOtp.isFailure)
 
     // Correct OTP resets password and allows sign-in with new password
-    val goodOtp = repository.verifyOtpAndResetPassword("minnyo.work@gmail.com", "482910", "FinalPass3")
+    val goodOtp = repository.verifyOtpAndResetPassword("test@example.com", "482910", "FinalPass3")
     assertTrue(goodOtp.isSuccess)
-    assertTrue(repository.loginWithPassword("minnyo.work@gmail.com", "FinalPass3").isSuccess)
+    assertTrue(repository.loginWithPassword("test@example.com", "FinalPass3").isSuccess)
   }
 
   @Test
@@ -188,7 +188,7 @@ class ExampleRobolectricTest {
     val linkingService = AccountLinkingService(repository)
 
     val reg = repository.registerWithPassword(
-      email = "partner1@couple.app",
+      email = "test@example.com",
       password = "Password123",
       userName = "Alex",
       createNewCouple = true
@@ -217,7 +217,7 @@ class ExampleRobolectricTest {
 
     // User A creates account 1 and adds an expense + memo
     val userA = repository.registerWithPassword(
-      email = "alex.link@couple.app",
+      email = "test@example.com",
       password = "Password123",
       userName = "Alex",
       createNewCouple = true
@@ -237,7 +237,7 @@ class ExampleRobolectricTest {
 
     // User B creates account 2 separately and adds an expense + memo
     val userB = repository.registerWithPassword(
-      email = "maya.link@couple.app",
+      email = "test@example.com",
       password = "Password123",
       userName = "Maya",
       createNewCouple = true
@@ -394,7 +394,7 @@ class ExampleRobolectricTest {
       id = "acc-me-cash",
       couple_id = coupleId,
       owner_name = "Alex",
-      owner_email = "alex@example.com",
+      owner_email = "test@example.com",
       account_type = MoneyAccountType.CASH.name,
       account_name = "Pocket Cash",
       balance = 100_000.0,
@@ -404,7 +404,7 @@ class ExampleRobolectricTest {
       id = "acc-me-bank-1",
       couple_id = coupleId,
       owner_name = "Alex",
-      owner_email = "alex@example.com",
+      owner_email = "test@example.com",
       account_type = MoneyAccountType.BANK.name,
       institution_name = "KBZ Bank",
       account_name = "Salary Account",
@@ -416,7 +416,7 @@ class ExampleRobolectricTest {
       id = "acc-me-bank-2",
       couple_id = coupleId,
       owner_name = "Alex",
-      owner_email = "alex@example.com",
+      owner_email = "test@example.com",
       account_type = MoneyAccountType.BANK.name,
       institution_name = "AYA Bank",
       account_name = "Savings Account",
@@ -428,7 +428,7 @@ class ExampleRobolectricTest {
       id = "acc-me-card-1",
       couple_id = coupleId,
       owner_name = "Alex",
-      owner_email = "alex@example.com",
+      owner_email = "test@example.com",
       account_type = MoneyAccountType.CARD.name,
       institution_name = "Visa",
       account_name = "Travel Card",
@@ -440,7 +440,7 @@ class ExampleRobolectricTest {
       id = "acc-gf-bank-1",
       couple_id = coupleId,
       owner_name = "Suzy",
-      owner_email = "suzy@example.com",
+      owner_email = "test@example.com",
       account_type = MoneyAccountType.BANK.name,
       institution_name = "CB Bank",
       account_name = "Personal Account",
@@ -454,8 +454,8 @@ class ExampleRobolectricTest {
     }
 
     val all = repo.moneyAccountsFlow.first()
-    val myList = all.filter { it.matchesOwner("Alex", "alex@example.com") }
-    val gfList = all.filter { it.matchesOwner("Suzy", "suzy@example.com") }
+    val myList = all.filter { it.matchesOwner("Alex", "test@example.com") }
+    val gfList = all.filter { it.matchesOwner("Suzy", "test@example.com") }
 
     assertEquals(4, myList.size)
     assertEquals(1, gfList.size)
@@ -579,7 +579,7 @@ class ExampleRobolectricTest {
   fun `format network exception translates unknown host into actionable settings guidance`() {
     val manager = SupabaseClientManager(
       customUrl = "https://yfsrfjjjkxavokwsufog.supabase.co",
-      customKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSJ9.signatureplaceholder"
+      customKey = "fake.jwt.token"
     )
     val mapped = manager.formatNetworkException(
       UnknownHostException("Unable to resolve host \"yfsrfjjjkxavokwsufog.supabase.co\": No address associated with hostname")
@@ -599,7 +599,7 @@ class ExampleRobolectricTest {
 
     val manager = SupabaseClientManager(
       customUrl = "https://yfsrfjjjkxavokwsufog.supabase.co",
-      customKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSJ9.signatureplaceholder"
+      customKey = "fake.jwt.token"
     )
     val formatted = manager.formatNetworkException(wrapped)
     val msg = formatted.message.orEmpty()
@@ -971,7 +971,7 @@ class ExampleRobolectricTest {
       )
       prefs.updateUserProfile(
         name = "Min Nyo",
-        email = "minnyo@example.com",
+        email = "test@example.com",
         dob = "1998-05-20",
         avatarPath = ""
       )
@@ -980,7 +980,7 @@ class ExampleRobolectricTest {
           id = "prof-me-1",
           couple_id = coupleId,
           user_name = "Min Nyo",
-          email = "minnyo@example.com",
+          email = "test@example.com",
           date_of_birth = "1998-05-20"
         )
       )
@@ -1070,7 +1070,7 @@ class ExampleRobolectricTest {
         "refresh_token": "refresh.token.xyz",
         "user": {
           "id": "auth-uid-999",
-          "email": "minnyo.work@gmail.com",
+          "email": "test@example.com",
           "user_metadata": {
             "user_name": "Min Nyo",
             "create_new_couple": true
@@ -1083,7 +1083,7 @@ class ExampleRobolectricTest {
     assertEquals("jwt.access.token.123", parsed.access_token)
     assertEquals("refresh.token.xyz", parsed.refresh_token)
     assertEquals("auth-uid-999", parsed.user?.id)
-    assertEquals("minnyo.work@gmail.com", parsed.user?.email)
+    assertEquals("test@example.com", parsed.user?.email)
 
     manager.setAuthSession(
       accessToken = parsed.access_token,

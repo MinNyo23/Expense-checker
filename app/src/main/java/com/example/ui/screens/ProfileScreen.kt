@@ -608,7 +608,7 @@ fun ProfileScreen(
                             leadingIcon = {
                                 Icon(Icons.Default.Email, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             },
-                            placeholder = { Text("e.g. minnyo.work@gmail.com") },
+                            placeholder = { Text("e.g. test@example.com") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                             singleLine = true,
                             modifier = Modifier
