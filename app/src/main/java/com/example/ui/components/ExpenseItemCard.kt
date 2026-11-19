@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -15,7 +16,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -25,18 +29,28 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
 import com.example.data.model.Expense
 import com.example.data.model.ExpenseCategory
+import com.example.data.model.SplitType
 import com.example.ui.theme.PartnerAColor
 import com.example.ui.theme.PartnerBColor
+import com.example.util.FormatUtils
+import java.io.File
 import java.util.Locale
 
 @Composable
@@ -47,9 +61,24 @@ fun ExpenseItemCard(
     onLocationClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val category = ExpenseCategory.fromString(expense.category)
-    val isCurrentUser = expense.user_name.equals(currentUserName, ignoreCase = true)
+    val category = remember(expense.category) { ExpenseCategory.fromString(expense.category) }
+    val isCurrentUser = remember(expense.user_name, currentUserName) {
+        expense.user_name.equals(currentUserName, ignoreCase = true)
+    }
     val partnerBadgeColor = if (isCurrentUser) PartnerAColor else PartnerBColor
+    val cleanNote = remember(expense.note) { expense.cleanNote }
+    val splitType = remember(expense.note) { expense.splitType }
+    val photoUri = remember(expense.note) { expense.photoUri }
+    val accountLabel = remember(expense.note) { expense.moneyAccountLabel }
+    val formattedAmount = remember(expense.amount) { FormatUtils.formatMmk(expense.amount) }
+    val gpsText = remember(expense.latitude, expense.longitude) {
+        if (expense.latitude != null && expense.longitude != null) {
+            String.format(Locale.US, "GPS: %.4f, %.4f", expense.latitude, expense.longitude)
+        } else {
+            null
+        }
+    }
+    var showFullPhotoDialog by remember { mutableStateOf(false) }
 
     Card(
         modifier = modifier
@@ -94,7 +123,7 @@ fun ExpenseItemCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = if (expense.note.isNotBlank()) expense.note else category.title,
+                        text = if (cleanNote.isNotBlank()) cleanNote else category.title,
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 15.sp
@@ -123,6 +152,22 @@ fun ExpenseItemCard(
                         )
                     }
 
+                    // Split Mode Tag
+                    if (splitType != SplitType.SHARED) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = splitType.shortLabel,
+                                color = MaterialTheme.colorScheme.tertiary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
                     // Category name
                     Text(
                         text = "• ${category.title}",
@@ -138,25 +183,79 @@ fun ExpenseItemCard(
                     )
                 }
 
-                // GPS location indicator if available
-                if (expense.latitude != null && expense.longitude != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickableNoRipple(onLocationClick)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LocationOn,
-                            contentDescription = "Location tagged",
-                            tint = partnerBadgeColor,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                            text = String.format(Locale.US, "GPS: %.4f, %.4f", expense.latitude, expense.longitude),
-                            fontSize = 11.sp,
-                            color = partnerBadgeColor
-                        )
+                // GPS Location & Photo Thumbnail indicators
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    if (gpsText != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickableNoRipple(onLocationClick)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = "Location tagged",
+                                tint = partnerBadgeColor,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = gpsText,
+                                fontSize = 11.sp,
+                                color = partnerBadgeColor
+                            )
+                        }
+                    }
+
+                    if (!accountLabel.isNullOrBlank()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f))
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccountBalanceWallet,
+                                contentDescription = "Paid Account",
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = accountLabel,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+                    }
+
+                    if (!photoUri.isNullOrBlank()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable { showFullPhotoDialog = true }
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Image,
+                                contentDescription = "Photo attached",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "Photo",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             }
@@ -168,7 +267,7 @@ fun ExpenseItemCard(
                 horizontalAlignment = Alignment.End
             ) {
                 Text(
-                    text = com.example.util.FormatUtils.formatMmk(expense.amount),
+                    text = formattedAmount,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
@@ -188,6 +287,48 @@ fun ExpenseItemCard(
                             contentDescription = "Delete expense",
                             tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
                             modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Photo Preview Dialog
+    if (showFullPhotoDialog && !photoUri.isNullOrBlank()) {
+        Dialog(onDismissRequest = { showFullPhotoDialog = false }) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Attached Receipt / Photo",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        IconButton(onClick = { showFullPhotoDialog = false }, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(280.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.Black)
+                    ) {
+                        AsyncImage(
+                            model = remember(photoUri) { File(photoUri) },
+                            contentDescription = "Receipt photo full preview",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
                         )
                     }
                 }

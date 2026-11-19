@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
@@ -30,13 +33,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -45,6 +49,7 @@ import com.example.data.model.Expense
 import com.example.data.model.ExpenseCategory
 import com.example.ui.components.ExpenseItemCard
 import com.example.ui.viewmodel.CoupleExpenseViewModel
+import com.example.util.FormatUtils
 import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -52,10 +57,11 @@ import java.util.Locale
 fun HistoryScreen(
     viewModel: CoupleExpenseViewModel,
     onNavigateToMap: () -> Unit,
+    listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier
 ) {
-    val expenses by viewModel.expenses.collectAsState()
-    val userSession by viewModel.userSession.collectAsState()
+    val expenses by viewModel.expenses.collectAsStateWithLifecycle()
+    val userSession by viewModel.userSession.collectAsStateWithLifecycle()
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategoryFilter by remember { mutableStateOf<ExpenseCategory?>(null) }
@@ -87,11 +93,14 @@ fun HistoryScreen(
     val totalFilteredSum = remember(filteredList) {
         filteredList.sumOf { it.amount }
     }
+    val totalFilteredText = remember(totalFilteredSum) {
+        com.example.util.FormatUtils.formatMmk(totalFilteredSum)
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Color.Transparent)
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -172,7 +181,7 @@ fun HistoryScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "Total: ${com.example.util.FormatUtils.formatMmk(totalFilteredSum)}",
+                    text = "Total: $totalFilteredText",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.primary
@@ -204,12 +213,17 @@ fun HistoryScreen(
             }
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(filteredList, key = { it.id }) { expense ->
+                itemsIndexed(
+                    items = filteredList,
+                    key = { idx, exp -> "hist_${exp.id}_$idx" },
+                    contentType = { _, _ -> "expense" }
+                ) { _, expense ->
                     ExpenseItemCard(
                         expense = expense,
                         currentUserName = userSession.userName,
@@ -217,7 +231,7 @@ fun HistoryScreen(
                         onLocationClick = { onNavigateToMap() }
                     )
                 }
-                item {
+                item(key = "history_footer_spacer", contentType = "spacer") {
                     Spacer(modifier = Modifier.height(20.dp))
                 }
             }
@@ -225,12 +239,11 @@ fun HistoryScreen(
     }
 
     // Delete Confirmation Dialog
-    if (expenseToDelete != null) {
-        val item = expenseToDelete!!
+    expenseToDelete?.let { item ->
         AlertDialog(
             onDismissRequest = { expenseToDelete = null },
             title = { Text("Delete Expense?") },
-            text = { Text("Are you sure you want to remove '$${String.format(Locale.US, "%.2f", item.amount)} - ${item.note.ifBlank { item.category }}' from your shared budget?") },
+            text = { Text("Are you sure you want to remove '${FormatUtils.formatMmk(item.amount)} - ${item.cleanNote.ifBlank { item.category }}' from your shared budget?") },
             confirmButton = {
                 TextButton(
                     onClick = {

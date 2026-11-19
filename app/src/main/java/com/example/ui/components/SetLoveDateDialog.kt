@@ -92,19 +92,24 @@ fun SetLoveDateDialog(
         }
     }
 
-    // Native DatePicker helper
-    val systemDatePicker = remember {
-        DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                selectedYear = year
-                selectedMonth = month + 1
-                selectedDay = dayOfMonth
-            },
-            selectedYear,
-            selectedMonth - 1,
-            selectedDay
-        )
+    // Safe native DatePicker launcher created on demand
+    val openSystemDatePicker = remember(context, selectedYear, selectedMonth, selectedDay) {
+        {
+            runCatching {
+                DatePickerDialog(
+                    context,
+                    { _, year, month, dayOfMonth ->
+                        selectedYear = year
+                        selectedMonth = month + 1
+                        selectedDay = dayOfMonth
+                    },
+                    selectedYear,
+                    (selectedMonth - 1).coerceIn(0, 11),
+                    selectedDay.coerceIn(1, 31)
+                ).show()
+            }
+            Unit
+        }
     }
 
     AlertDialog(
@@ -150,7 +155,7 @@ fun SetLoveDateDialog(
             ) {
                 // Calendar Picker Fast Button
                 OutlinedButton(
-                    onClick = { systemDatePicker.show() },
+                    onClick = openSystemDatePicker,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("open_calendar_picker_button"),

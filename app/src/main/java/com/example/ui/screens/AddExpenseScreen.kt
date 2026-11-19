@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.DatePickerDialog
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,19 +28,28 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.CallSplit
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
@@ -47,30 +57,44 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.example.data.local.ImageStorageHelper
 import com.example.data.model.ExpenseCategory
+import com.example.data.model.MoneyAccountType
+import com.example.data.model.SplitType
 import com.example.data.supabase.SupabaseRepository
 import com.example.ui.components.CategoryChip
 import com.example.ui.theme.PartnerAColor
 import com.example.ui.theme.PartnerBColor
 import com.example.ui.viewmodel.CoupleExpenseViewModel
+import com.example.util.FormatUtils
+import com.example.util.PermissionHelper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.Calendar
 import java.util.Locale
 
@@ -82,26 +106,81 @@ fun AddExpenseScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
-    val userSession by viewModel.userSession.collectAsState()
+    val userSession by viewModel.userSession.collectAsStateWithLifecycle()
+    val myMoneyAccounts by viewModel.myMoneyAccounts.collectAsStateWithLifecycle()
+    val partnerMoneyAccounts by viewModel.partnerMoneyAccounts.collectAsStateWithLifecycle()
 
     var amountText by remember { mutableStateOf("") }
     var noteText by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf(ExpenseCategory.FOOD) }
+    var selectedSplitType by remember { mutableStateOf(SplitType.SHARED) }
+    var attachedPhotoPath by remember { mutableStateOf<String?>(null) }
     var selectedDate by remember { mutableStateOf(SupabaseRepository.getTodayDate()) }
     var loggedByName by remember { mutableStateOf(userSession.userName.ifBlank { "You" }) }
+    var selectedAccountId by remember { mutableStateOf<String?>(null) }
 
     var latitude by remember { mutableStateOf<Double?>(null) }
     var longitude by remember { mutableStateOf<Double?>(null) }
     var isFetchingLocation by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
+    var hasLocationPermission by remember {
+        mutableStateOf(PermissionHelper.hasLocationPermission(context))
+    }
+    var hasAttemptedLocationRequest by remember { mutableStateOf(false) }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val granted = PermissionHelper.hasLocationPermission(context)
+                val newlyGranted = granted && !hasLocationPermission
+                hasLocationPermission = granted
+                if (newlyGranted && latitude == null) {
+                    coroutineScope.launch {
+                        isFetchingLocation = true
+                        val coords = viewModel.locationHelper.getCurrentCoordinates()
+                        if (coords != null) {
+                            latitude = coords.first
+                            longitude = coords.second
+                        }
+                        isFetchingLocation = false
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Zero-permission Photo Picker (image IO off main thread)
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch {
+                val localPath = withContext(Dispatchers.IO) {
+                    ImageStorageHelper.saveImageToInternalStorage(context, uri)
+                }
+                if (localPath != null) {
+                    attachedPhotoPath = localPath
+                    Toast.makeText(context, "Receipt photo attached!", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     // Location Permission launcher
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
+        hasAttemptedLocationRequest = true
         val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
+                PermissionHelper.hasLocationPermission(context)
+        hasLocationPermission = granted
         if (granted) {
             coroutineScope.launch {
                 isFetchingLocation = true
@@ -119,7 +198,8 @@ fun AddExpenseScreen(
 
     // Auto-fetch location on entry
     LaunchedEffect(Unit) {
-        if (viewModel.locationHelper.hasLocationPermission()) {
+        if (PermissionHelper.hasLocationPermission(context)) {
+            hasLocationPermission = true
             isFetchingLocation = true
             val coords = viewModel.locationHelper.getCurrentCoordinates()
             if (coords != null) {
@@ -128,28 +208,30 @@ fun AddExpenseScreen(
             }
             isFetchingLocation = false
         } else {
-            locationPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
+            locationPermissionLauncher.launch(PermissionHelper.LOCATION_PERMISSIONS)
         }
     }
 
-    // Date Picker Dialog
-    val calendar = Calendar.getInstance()
-    val datePickerDialog = DatePickerDialog(
-        context,
-        { _, year, month, dayOfMonth ->
-            selectedDate = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
-        },
-        calendar.get(Calendar.YEAR),
-        calendar.get(Calendar.MONTH),
-        calendar.get(Calendar.DAY_OF_MONTH)
-    )
+    val openDatePicker = remember(context) {
+        {
+            runCatching {
+                val calendar = Calendar.getInstance()
+                DatePickerDialog(
+                    context,
+                    { _, year, month, dayOfMonth ->
+                        selectedDate = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
+                    },
+                    calendar.get(Calendar.YEAR),
+                    calendar.get(Calendar.MONTH),
+                    calendar.get(Calendar.DAY_OF_MONTH)
+                ).show()
+            }
+            Unit
+        }
+    }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = { Text("Log Couple Expense", fontWeight = FontWeight.Bold) },
@@ -157,17 +239,21 @@ fun AddExpenseScreen(
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xF5FFFFFF)
+                )
             )
         }
-    ) { paddingValues ->
+    ) { innerPadding ->
         Column(
             modifier = modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(innerPadding)
+                .background(Color.Transparent)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Amount Input Card
             Card(
@@ -188,7 +274,6 @@ fun AddExpenseScreen(
                     OutlinedTextField(
                         value = amountText,
                         onValueChange = { input ->
-                            // Allow valid decimal numbers
                             if (input.matches(Regex("""^\d*(\.\d{0,2})?$"""))) {
                                 amountText = input
                             }
@@ -242,6 +327,56 @@ fun AddExpenseScreen(
                 }
             }
 
+            // Split Type Calculator Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.CallSplit,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Split Mode (Who Owes Whom)",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(SplitType.SHARED, SplitType.PAID_FOR_PARTNER, SplitType.PERSONAL).forEach { split ->
+                            val isSelected = selectedSplitType == split
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedSplitType = split },
+                                label = { Text(split.shortLabel, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = selectedSplitType.description,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
             // Category Selector
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -274,7 +409,7 @@ fun AddExpenseScreen(
                 }
             }
 
-            // Note & Date & Payer
+            // Note, Date, Payer & Photo
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -295,11 +430,16 @@ fun AddExpenseScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        val isUserLogged = loggedByName.equals(userSession.userName, ignoreCase = true)
+                        val isUserLogged = loggedByName.equals(userSession.userName.ifBlank { "You" }, ignoreCase = true)
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
-                                .clickable { loggedByName = userSession.userName.ifBlank { "You" } },
+                                .clickable {
+                                    loggedByName = userSession.userName.ifBlank { "You" }
+                                    if (myMoneyAccounts.none { it.id == selectedAccountId }) {
+                                        selectedAccountId = null
+                                    }
+                                },
                             color = if (isUserLogged) PartnerAColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
                             shape = RoundedCornerShape(12.dp)
                         ) {
@@ -327,7 +467,12 @@ fun AddExpenseScreen(
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
-                                .clickable { loggedByName = "Partner" },
+                                .clickable {
+                                    loggedByName = userSession.partnerName.ifBlank { "Partner" }
+                                    if (partnerMoneyAccounts.none { it.id == selectedAccountId }) {
+                                        selectedAccountId = null
+                                    }
+                                },
                             color = if (!isUserLogged) PartnerBColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
                             shape = RoundedCornerShape(12.dp)
                         ) {
@@ -344,12 +489,92 @@ fun AddExpenseScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "Partner",
+                                    text = userSession.partnerName.ifBlank { "Partner" },
                                     fontWeight = FontWeight.Bold,
                                     color = if (!isUserLogged) PartnerBColor else MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontSize = 13.sp
                                 )
                             }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Separated Account Selector (Cash / Multi-Bank / Card) filtered strictly by Who Paid
+                    val payerAccounts = if (loggedByName.equals(userSession.userName.ifBlank { "You" }, ignoreCase = true)) {
+                        myMoneyAccounts
+                    } else {
+                        partnerMoneyAccounts
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.AccountBalanceWallet,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Pay From ${loggedByName}'s Account (Syncs Balance)",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    if (payerAccounts.isEmpty()) {
+                        Text(
+                            text = "No Cash/Bank/Card accounts set up for $loggedByName yet. Add them in My Money on Home.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        FlowRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("expense_account_selector"),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            FilterChip(
+                                selected = selectedAccountId == null,
+                                onClick = { selectedAccountId = null },
+                                label = { Text("Untracked", fontSize = 11.sp) }
+                            )
+                            payerAccounts.forEach { acc ->
+                                val icon = when (acc.typeEnum) {
+                                    MoneyAccountType.CASH -> Icons.Default.Payments
+                                    MoneyAccountType.BANK -> Icons.Default.AccountBalance
+                                    MoneyAccountType.CARD -> Icons.Default.CreditCard
+                                }
+                                FilterChip(
+                                    selected = selectedAccountId == acc.id,
+                                    onClick = { selectedAccountId = acc.id },
+                                    leadingIcon = {
+                                        Icon(icon, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    },
+                                    label = {
+                                        Text(
+                                            text = "${acc.shortBadgeLabel} (${FormatUtils.formatMmk(acc.balance)})",
+                                            fontSize = 11.sp
+                                        )
+                                    },
+                                    modifier = Modifier.testTag("select_pay_account_${acc.id}")
+                                )
+                            }
+                        }
+
+                        val selectedAccObj = payerAccounts.firstOrNull { it.id == selectedAccountId }
+                        val parsedAmount = amountText.toDoubleOrNull() ?: 0.0
+                        if (selectedAccObj != null && parsedAmount > 0.0) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Balance after payment: ${FormatUtils.formatMmk(selectedAccObj.balance - parsedAmount)}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedAccObj.balance - parsedAmount >= 0.0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+                            )
                         }
                     }
 
@@ -368,13 +593,13 @@ fun AddExpenseScreen(
                         onValueChange = {},
                         readOnly = true,
                         trailingIcon = {
-                            IconButton(onClick = { datePickerDialog.show() }) {
+                            IconButton(onClick = openDatePicker) {
                                 Icon(Icons.Default.CalendarMonth, contentDescription = "Pick Date")
                             }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { datePickerDialog.show() }
+                            .clickable { openDatePicker() }
                             .testTag("date_picker_field"),
                         shape = RoundedCornerShape(14.dp)
                     )
@@ -398,6 +623,59 @@ fun AddExpenseScreen(
                             .testTag("note_input"),
                         shape = RoundedCornerShape(14.dp)
                     )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Photo / Receipt Attachment Section
+                    Text(
+                        text = "Receipt / Date Memory Photo",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val photoPath = attachedPhotoPath
+                    if (photoPath != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            AsyncImage(
+                                model = File(photoPath),
+                                contentDescription = "Attached Photo",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                            IconButton(
+                                onClick = { attachedPhotoPath = null },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(8.dp)
+                                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                                    .size(32.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Remove photo", tint = Color.White, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = {
+                                photoPickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Attach Photo (Receipt / Date Moment)", fontSize = 13.sp)
+                        }
+                    }
                 }
             }
 
@@ -434,7 +712,7 @@ fun AddExpenseScreen(
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Text(
                                 text = "GPS Location Tag",
                                 fontWeight = FontWeight.Bold,
@@ -453,6 +731,12 @@ fun AddExpenseScreen(
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.SemiBold
                                 )
+                            } else if (!hasLocationPermission) {
+                                Text(
+                                    text = "Location permission needed to pin on Date Map",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.error
+                                )
                             } else {
                                 Text(
                                     text = "No GPS fix (tap to refresh)",
@@ -463,16 +747,28 @@ fun AddExpenseScreen(
                         }
                     }
 
-                    IconButton(
-                        onClick = {
-                            if (!viewModel.locationHelper.hasLocationPermission()) {
-                                locationPermissionLauncher.launch(
-                                    arrayOf(
-                                        Manifest.permission.ACCESS_FINE_LOCATION,
-                                        Manifest.permission.ACCESS_COARSE_LOCATION
-                                    )
-                                )
-                            } else {
+                    if (!hasLocationPermission) {
+                        val permanentlyDenied = hasAttemptedLocationRequest && !PermissionHelper.shouldShowLocationRationale(context)
+                        OutlinedButton(
+                            onClick = {
+                                if (permanentlyDenied) {
+                                    PermissionHelper.openAppSettings(context)
+                                } else {
+                                    locationPermissionLauncher.launch(PermissionHelper.LOCATION_PERMISSIONS)
+                                }
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("refresh_gps_button")
+                        ) {
+                            Text(
+                                text = if (permanentlyDenied) "Open Settings" else "Allow GPS",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        IconButton(
+                            onClick = {
                                 coroutineScope.launch {
                                     isFetchingLocation = true
                                     val coords = viewModel.locationHelper.getCurrentCoordinates()
@@ -483,18 +779,18 @@ fun AddExpenseScreen(
                                     }
                                     isFetchingLocation = false
                                 }
+                            },
+                            modifier = Modifier.testTag("refresh_gps_button")
+                        ) {
+                            if (isFetchingLocation) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.MyLocation,
+                                    contentDescription = "Refresh GPS",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
                             }
-                        },
-                        modifier = Modifier.testTag("refresh_gps_button")
-                    ) {
-                        if (isFetchingLocation) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.MyLocation,
-                                contentDescription = "Refresh GPS",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
                         }
                     }
                 }
@@ -513,11 +809,14 @@ fun AddExpenseScreen(
                     viewModel.addExpense(
                         amount = amount,
                         category = selectedCategory,
-                        note = noteText,
+                        rawNote = noteText,
+                        splitType = selectedSplitType,
+                        photoPath = attachedPhotoPath,
                         date = selectedDate,
                         latitude = latitude,
                         longitude = longitude,
-                        loggedBy = loggedByName
+                        loggedBy = loggedByName,
+                        moneyAccountId = selectedAccountId
                     ) { success ->
                         isSaving = false
                         if (success) {
