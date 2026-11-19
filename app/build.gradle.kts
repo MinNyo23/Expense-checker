@@ -15,7 +15,8 @@ android {
 
   defaultConfig {
     applicationId = "com.aistudio.coupleexpense.qxyv"
-    minSdk = 24
+    // supabase-kt 3.x requires Android API 26 or newer.
+    minSdk = 26
     targetSdk = 36
     versionCode = 1
     versionName = "1.0"

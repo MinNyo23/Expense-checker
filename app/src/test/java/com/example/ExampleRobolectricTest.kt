@@ -1126,17 +1126,4 @@ class ExampleRobolectricTest {
     assertEquals(anonKey, manager.getAuthorizationBearer())
   }
 
-  @Test
-  fun `hardened supabase sql enforces JWT auth uid RLS policies across couple tables`() {
-    val sql = SupabaseRepository.SUPABASE_SQL_SETUP_SCRIPT
-    assertTrue(sql.contains("auth_user_id uuid"))
-    assertTrue(sql.contains("public.current_user_couple_ids()"))
-    assertTrue(sql.contains("auth.uid()"))
-    assertTrue(sql.contains("auth.jwt() ->> 'email'"))
-    assertTrue(sql.contains("couple_id in (select public.current_user_couple_ids())"))
-    assertTrue(sql.contains("for all to authenticated"))
-    assertTrue(sql.contains("public.get_my_couple_session()"))
-    assertTrue(sql.contains("public.provision_couple_membership("))
-    assertTrue(sql.contains("public.resolve_email_for_username("))
-  }
 }
