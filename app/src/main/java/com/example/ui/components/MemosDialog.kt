@@ -6,7 +6,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,21 +22,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -52,33 +52,45 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.data.model.CoupleMemo
+import com.example.data.model.ResourceState
 import com.example.ui.theme.PartnerAColor
 import com.example.ui.theme.PartnerBColor
 import com.example.ui.viewmodel.CoupleExpenseViewModel
 import java.util.Calendar
 import java.util.Locale
+
+private fun isPrivateStoragePath(path: String): Boolean {
+    val clean = path.trim()
+    return clean.isNotBlank() &&
+        !clean.startsWith("http://") &&
+        !clean.startsWith("https://") &&
+        !clean.startsWith("data:") &&
+        !clean.startsWith("content:") &&
+        !clean.startsWith("file:") &&
+        !clean.startsWith("/")
+}
 
 @Composable
 fun MemosDialog(
@@ -87,7 +99,10 @@ fun MemosDialog(
 ) {
     val context = LocalContext.current
     val userSession by viewModel.userSession.collectAsStateWithLifecycle()
+    val memosState by viewModel.memosState.collectAsStateWithLifecycle()
     val memos by viewModel.memos.collectAsStateWithLifecycle()
+    val signedMemoUrls by viewModel.signedMemoUrls.collectAsStateWithLifecycle()
+    val memoImageErrors by viewModel.memoImageErrors.collectAsStateWithLifecycle()
     val partnerProfile by viewModel.partnerProfile.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val memosListState = rememberLazyListState()
@@ -97,7 +112,7 @@ fun MemosDialog(
     var memoToDelete by remember { mutableStateOf<CoupleMemo?>(null) }
 
     val myName = userSession.userName.ifBlank { "You" }
-    val partnerName = partnerProfile?.user_name?.ifBlank { userSession.partnerName } ?: userSession.partnerName.ifBlank { "Girlfriend" }
+    val partnerName = partnerProfile?.user_name?.ifBlank { userSession.partnerName } ?: userSession.partnerName.ifBlank { "Partner" }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -140,7 +155,7 @@ fun MemosDialog(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "Love Memos & Photos 📸",
+                                text = "Love Memos & Photos",
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 18.sp
@@ -148,7 +163,7 @@ fun MemosDialog(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Live synced between $myName & $partnerName",
+                                text = "Private signed sync between $myName & $partnerName",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -197,7 +212,7 @@ fun MemosDialog(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Instant backend sync to both phones",
+                                text = "Private couple bucket with signed URLs",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -218,65 +233,123 @@ fun MemosDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Memos List
-                if (memos.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(24.dp)
+                when (val state = memosState) {
+                    is ResourceState.Loading -> {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.AddPhotoAlternate,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                modifier = Modifier.size(64.dp)
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "No photo memos yet",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Upload your first sweet photo memory together!\nBoth you and $partnerName will see it live.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(
-                                onClick = { showAddSheet = true },
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Upload a Photo Memo 📸")
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator()
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "Loading your couple memos...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
-                } else {
-                    LazyColumn(
-                        state = memosListState,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        itemsIndexed(
-                            items = memos,
-                            key = { idx, memo -> "dlg_memo_${memo.id}_$idx" },
-                            contentType = { _, _ -> "memo_card" }
-                        ) { _, memo ->
-                            MemoCard(
-                                memo = memo,
-                                currentUserName = myName,
-                                onImageClick = { selectedMemoForFullView = memo },
-                                onDeleteClick = { memoToDelete = memo }
+
+                    is ResourceState.Error -> {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = state.message,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(14.dp))
+                                Button(
+                                    onClick = { viewModel.retryMemos() },
+                                    modifier = Modifier.testTag("retry_memos_button")
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Retry")
+                                }
+                            }
+                        }
+                    }
+
+                    is ResourceState.Empty -> {
+                        EmptyMemosView(
+                            partnerName = partnerName,
+                            onAddClick = { showAddSheet = true },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                        )
+                    }
+
+                    is ResourceState.Success -> {
+                        if (state.data.isEmpty()) {
+                            EmptyMemosView(
+                                partnerName = partnerName,
+                                onAddClick = { showAddSheet = true },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
                             )
+                        } else {
+                            LazyColumn(
+                                state = memosListState,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                itemsIndexed(
+                                    items = state.data,
+                                    key = { idx, memo -> "dlg_memo_${memo.id}_$idx" },
+                                    contentType = { _, _ -> "memo_card" }
+                                ) { _, memo ->
+                                    val path = memo.image_url
+                                    if (isPrivateStoragePath(path)) {
+                                        LaunchedEffect(path) {
+                                            viewModel.resolveMemoImageUrl(path)
+                                        }
+                                    }
+                                    val resolvedModel: Any? = when {
+                                        path.isBlank() -> null
+                                        isPrivateStoragePath(path) -> signedMemoUrls[path]
+                                        else -> path
+                                    }
+                                    MemoCard(
+                                        memo = memo,
+                                        resolvedImageModel = resolvedModel,
+                                        imageError = memoImageErrors[path],
+                                        currentUserName = myName,
+                                        onImageClick = {
+                                            if (path.isNotBlank()) {
+                                                selectedMemoForFullView = memo
+                                            }
+                                        },
+                                        onRetryImage = {
+                                            viewModel.resolveMemoImageUrl(path, forceRefresh = true)
+                                        },
+                                        onDeleteClick = { memoToDelete = memo }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -284,7 +357,6 @@ fun MemosDialog(
         }
     }
 
-    // Add Memo Sheet/Dialog
     if (showAddSheet) {
         AddMemoDialog(
             viewModel = viewModel,
@@ -295,24 +367,32 @@ fun MemosDialog(
         )
     }
 
-    // Fullscreen Image Viewer
     selectedMemoForFullView?.let { memo ->
+        val path = memo.image_url
+        if (isPrivateStoragePath(path)) {
+            LaunchedEffect(path) {
+                viewModel.resolveMemoImageUrl(path)
+            }
+        }
+        val model: Any? = if (isPrivateStoragePath(path)) signedMemoUrls[path] else path
         FullScreenMemoViewerDialog(
             memo = memo,
+            resolvedImageModel = model,
+            imageError = memoImageErrors[path],
+            onRetryImage = { viewModel.resolveMemoImageUrl(path, forceRefresh = true) },
             onDismiss = { selectedMemoForFullView = null }
         )
     }
 
-    // Delete Confirmation
     memoToDelete?.let { memo ->
         AlertDialog(
             onDismissRequest = { memoToDelete = null },
-            title = { Text("Delete Photo Memo?") },
-            text = { Text("Are you sure you want to remove this photo memo? It will be deleted for both of you.") },
+            title = { Text("Delete Memo?") },
+            text = { Text("Are you sure you want to remove this memo? Any attached private photo will also be deleted.") },
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deleteMemo(memo.id)
+                        viewModel.deleteMemo(memo)
                         memoToDelete = null
                         Toast.makeText(context, "Memo deleted", Toast.LENGTH_SHORT).show()
                     },
@@ -331,10 +411,57 @@ fun MemosDialog(
 }
 
 @Composable
+private fun EmptyMemosView(
+    partnerName: String,
+    onAddClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(24.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.AddPhotoAlternate,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                modifier = Modifier.size(64.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "No couple memos yet",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Save a sweet note or private photo memory together.\nBoth you and $partnerName will see it securely.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = onAddClick,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Add First Memo")
+            }
+        }
+    }
+}
+
+@Composable
 fun MemoCard(
     memo: CoupleMemo,
+    resolvedImageModel: Any? = null,
+    imageError: String? = null,
     currentUserName: String,
     onImageClick: () -> Unit,
+    onRetryImage: () -> Unit = {},
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -350,33 +477,126 @@ fun MemoCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Photo Container with rounded top and zoom hint
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(4f / 3f)
-                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                    .clickable { onImageClick() }
-            ) {
-                AsyncImage(
-                    model = memo.image_url,
-                    contentDescription = memo.title.ifBlank { "Couple Memo Photo" },
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
+            if (memo.image_url.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(4f / 3f)
+                        .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .clickable { onImageClick() }
+                ) {
+                    when {
+                        resolvedImageModel != null -> {
+                            AsyncImage(
+                                model = resolvedImageModel,
+                                contentDescription = memo.title.ifBlank { "Couple Memo Photo" },
+                                contentScale = ContentScale.Crop,
+                                onError = { onRetryImage() },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        imageError != null -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.BrokenImage,
+                                    contentDescription = "Photo unavailable",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = imageError,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                OutlinedButton(onClick = onRetryImage) {
+                                    Text("Reload Photo", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                        else -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                            }
+                        }
+                    }
 
-                // Top Floating Author & Date Chips
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = authorColor.copy(alpha = 0.9f),
+                            tonalElevation = 2.dp
+                        ) {
+                            Text(
+                                text = if (isMe) "Added by You" else "Added by ${memo.user_name}",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color.Black.copy(alpha = 0.6f)
+                        ) {
+                            Text(
+                                text = memo.date.ifBlank { "Today" },
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.Black.copy(alpha = 0.5f),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(12.dp)
+                            .size(32.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.ZoomIn,
+                                contentDescription = "Zoom Photo",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
+                        .padding(start = 16.dp, end = 16.dp, top = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = authorColor.copy(alpha = 0.9f),
-                        tonalElevation = 2.dp
+                        color = authorColor.copy(alpha = 0.9f)
                     ) {
                         Text(
                             text = if (isMe) "Added by You" else "Added by ${memo.user_name}",
@@ -386,42 +606,14 @@ fun MemoCard(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
-
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color.Black.copy(alpha = 0.6f)
-                    ) {
-                        Text(
-                            text = memo.date.ifBlank { "Today" },
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
-                // Tap to zoom icon badge
-                Surface(
-                    shape = CircleShape,
-                    color = Color.Black.copy(alpha = 0.5f),
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(12.dp)
-                        .size(32.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.ZoomIn,
-                            contentDescription = "Zoom Photo",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                    Text(
+                        text = memo.date.ifBlank { "Today" },
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
-            // Text Info Section
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -433,7 +625,7 @@ fun MemoCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = memo.title.ifBlank { "Sweet Memory 💕" },
+                        text = memo.title.ifBlank { "Sweet Memory" },
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)
@@ -441,7 +633,7 @@ fun MemoCard(
 
                     IconButton(
                         onClick = onDeleteClick,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
@@ -477,13 +669,14 @@ fun AddMemoDialog(
     var dateInput by remember { mutableStateOf(com.example.data.supabase.SupabaseRepository.getTodayDate()) }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var isUploading by remember { mutableStateOf(false) }
+    var uploadError by remember { mutableStateOf<String?>(null) }
 
-    // Android zero-permission photo picker
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
             selectedImageUri = uri
+            uploadError = null
         }
     }
 
@@ -519,6 +712,7 @@ fun AddMemoDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(20.dp)
             ) {
                 Row(
@@ -527,7 +721,7 @@ fun AddMemoDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Add Photo Memo 📸",
+                        text = "Add Couple Memo",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -538,11 +732,10 @@ fun AddMemoDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Photo Selector Box
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp)
+                        .height(170.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         .border(
@@ -580,23 +773,27 @@ fun AddMemoDialog(
                             )
                         }
                     } else {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.AddPhotoAlternate,
-                                contentDescription = "Select Photo",
+                                contentDescription = "Select Optional Photo",
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(42.dp)
+                                modifier = Modifier.size(40.dp)
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Tap to choose photo memory",
+                                text = "Tap to attach optional photo",
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = "Zero permissions required",
+                                text = "JPEG, PNG, WebP, or GIF • Max 5 MiB (Optional)",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
@@ -604,12 +801,14 @@ fun AddMemoDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Title
                 OutlinedTextField(
                     value = titleInput,
-                    onValueChange = { titleInput = it },
+                    onValueChange = {
+                        titleInput = it
+                        uploadError = null
+                    },
                     label = { Text("Memory Title") },
-                    placeholder = { Text("e.g. Sunset dinner date 🌅") },
+                    placeholder = { Text("e.g. Sunset dinner date") },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -619,10 +818,12 @@ fun AddMemoDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Note
                 OutlinedTextField(
                     value = noteInput,
-                    onValueChange = { noteInput = it },
+                    onValueChange = {
+                        noteInput = it
+                        uploadError = null
+                    },
                     label = { Text("Sweet Note / Caption") },
                     placeholder = { Text("Tell your partner how special this was...") },
                     maxLines = 3,
@@ -634,7 +835,6 @@ fun AddMemoDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Date
                 OutlinedTextField(
                     value = dateInput,
                     onValueChange = {},
@@ -651,17 +851,36 @@ fun AddMemoDialog(
                     shape = RoundedCornerShape(12.dp)
                 )
 
+                uploadError?.let { err ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("memo_upload_error_banner")
+                    ) {
+                        Text(
+                            text = err,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(18.dp))
 
                 Button(
                     onClick = {
-                        if (selectedImageUri == null) {
-                            Toast.makeText(context, "Please select a photo first!", Toast.LENGTH_SHORT).show()
+                        if (titleInput.isBlank() && noteInput.isBlank()) {
+                            uploadError = "Please enter a memo title or note."
                             return@Button
                         }
+                        uploadError = null
                         isUploading = true
                         viewModel.addMemo(
-                            title = titleInput.ifBlank { "Love Memory 💕" },
+                            title = titleInput.ifBlank { "Love Memory" },
                             note = noteInput,
                             imageUri = selectedImageUri,
                             date = dateInput
@@ -670,7 +889,7 @@ fun AddMemoDialog(
                             if (success) {
                                 onSuccess()
                             } else {
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                uploadError = msg
                             }
                         }
                     },
@@ -688,11 +907,11 @@ fun AddMemoDialog(
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Uploading & Syncing...")
+                        Text("Saving Securely...")
                     } else {
                         Icon(Icons.Default.CloudDone, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Upload & Sync to Partner 💕", fontWeight = FontWeight.Bold)
+                        Text("Save & Sync to Couple", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -703,6 +922,9 @@ fun AddMemoDialog(
 @Composable
 fun FullScreenMemoViewerDialog(
     memo: CoupleMemo,
+    resolvedImageModel: Any? = memo.image_url,
+    imageError: String? = null,
+    onRetryImage: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     Dialog(
@@ -712,18 +934,45 @@ fun FullScreenMemoViewerDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black)
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
         ) {
-            AsyncImage(
-                model = memo.image_url,
-                contentDescription = memo.title,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable { onDismiss() }
-            )
+            when {
+                resolvedImageModel != null && resolvedImageModel.toString().isNotBlank() -> {
+                    AsyncImage(
+                        model = resolvedImageModel,
+                        contentDescription = memo.title,
+                        contentScale = ContentScale.Fit,
+                        onError = { onRetryImage() },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable { onDismiss() }
+                    )
+                }
+                imageError != null -> {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.BrokenImage,
+                            contentDescription = "Photo unavailable",
+                            tint = Color.White,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(text = imageError, color = Color.White, textAlign = TextAlign.Center)
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Button(onClick = onRetryImage) {
+                            Text("Retry Signed URL")
+                        }
+                    }
+                }
+                else -> {
+                    CircularProgressIndicator(color = Color.White)
+                }
+            }
 
-            // Close button top-end
             IconButton(
                 onClick = onDismiss,
                 modifier = Modifier
@@ -743,7 +992,6 @@ fun FullScreenMemoViewerDialog(
                 }
             }
 
-            // Bottom Caption Overlay
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -754,7 +1002,7 @@ fun FullScreenMemoViewerDialog(
                     modifier = Modifier.padding(20.dp)
                 ) {
                     Text(
-                        text = memo.title.ifBlank { "Love Memory 💕" },
+                        text = memo.title.ifBlank { "Love Memory" },
                         color = Color.White,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold

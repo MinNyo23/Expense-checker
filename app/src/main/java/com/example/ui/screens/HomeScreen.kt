@@ -69,6 +69,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -121,6 +122,8 @@ fun HomeScreen(
     val savingsGoals by viewModel.savingsGoals.collectAsStateWithLifecycle()
     val recurringBills by viewModel.recurringBills.collectAsStateWithLifecycle()
     val memos by viewModel.memos.collectAsStateWithLifecycle()
+    val memosState by viewModel.memosState.collectAsStateWithLifecycle()
+    val signedMemoUrls by viewModel.signedMemoUrls.collectAsStateWithLifecycle()
     val myMoneySummary by viewModel.myMoneySummary.collectAsStateWithLifecycle()
     val partnerMoneySummary by viewModel.partnerMoneySummary.collectAsStateWithLifecycle()
 
@@ -135,8 +138,28 @@ fun HomeScreen(
     var showMyMoneyModal by remember { mutableStateOf(false) }
     var openPartnerMoneyTab by remember { mutableStateOf(false) }
 
-    val userAvatar = myProfile?.avatar_url?.ifBlank { userSession.avatarPath } ?: userSession.avatarPath
-    val partnerAvatar = partnerProfile?.avatar_url?.ifBlank { userSession.partnerAvatarUrl } ?: userSession.partnerAvatarUrl
+    val userAvatarPath = myProfile?.avatar_url?.ifBlank { userSession.avatarPath } ?: userSession.avatarPath
+    val partnerAvatarPath = partnerProfile?.avatar_url?.ifBlank { userSession.partnerAvatarUrl } ?: userSession.partnerAvatarUrl
+    val isPrivatePath = remember {
+        { path: String ->
+            val p = path.trim()
+            p.isNotBlank() &&
+                !p.startsWith("http://") &&
+                !p.startsWith("https://") &&
+                !p.startsWith("data:") &&
+                !p.startsWith("content:") &&
+                !p.startsWith("file:") &&
+                !p.startsWith("/")
+        }
+    }
+    if (isPrivatePath(userAvatarPath)) {
+        LaunchedEffect(userAvatarPath) { viewModel.resolveMemoImageUrl(userAvatarPath) }
+    }
+    if (isPrivatePath(partnerAvatarPath)) {
+        LaunchedEffect(partnerAvatarPath) { viewModel.resolveMemoImageUrl(partnerAvatarPath) }
+    }
+    val userAvatar = if (isPrivatePath(userAvatarPath)) signedMemoUrls[userAvatarPath].orEmpty() else userAvatarPath
+    val partnerAvatar = if (isPrivatePath(partnerAvatarPath)) signedMemoUrls[partnerAvatarPath].orEmpty() else partnerAvatarPath
     val partnerName = partnerProfile?.user_name?.ifBlank { userSession.partnerName } ?: userSession.partnerName.ifBlank { "Love" }
     val recentMemos = remember(memos) { memos.take(6) }
     val recentExpenses = remember(expenses) { expenses.take(6) }
@@ -746,95 +769,164 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        if (memos.isEmpty()) {
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .clickable { showMemosDialog = true }
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                                    .padding(16.dp),
-                                color = Color.Transparent
-                            ) {
+                        when (memosState) {
+                            is com.example.data.model.ResourceState.Loading -> {
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AddPhotoAlternate,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(24.dp)
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp
                                     )
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Text(
-                                        text = "Upload a photo memo to share with $partnerName 💕",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium,
+                                        text = "Loading couple memos...",
+                                        fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
-                        } else {
-                            LazyRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                itemsIndexed(
-                                    items = recentMemos,
-                                    key = { index, memo -> "memo_${memo.id}_$index" },
-                                    contentType = { _, _ -> "memo_thumb" }
-                                ) { _, memo ->
-                                    Card(
-                                        modifier = Modifier
-                                            .width(145.dp)
-                                            .clickable { showMemosDialog = true }
-                                            .testTag("home_memo_thumb_${memo.id}"),
-                                        shape = RoundedCornerShape(14.dp),
-                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+
+                            is com.example.data.model.ResourceState.Error -> {
+                                val errMsg = (memosState as com.example.data.model.ResourceState.Error).message
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f))
+                                        .padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = errMsg,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    TextButton(onClick = { viewModel.retryMemos() }) {
+                                        Text("Retry", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            else -> if (memos.isEmpty()) {
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .clickable { showMemosDialog = true }
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                                        .padding(16.dp),
+                                    color = Color.Transparent
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
                                     ) {
-                                        Column {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(115.dp)
-                                                    .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
-                                            ) {
-                                                AsyncImage(
-                                                    model = memo.image_url,
-                                                    contentDescription = memo.title,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                                Surface(
-                                                    shape = RoundedCornerShape(6.dp),
-                                                    color = Color.Black.copy(alpha = 0.65f),
+                                        Icon(
+                                            imageVector = Icons.Default.AddPhotoAlternate,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = "Add a photo or note memo to share with $partnerName",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            } else {
+                                LazyRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    itemsIndexed(
+                                        items = recentMemos,
+                                        key = { index, memo -> "memo_${memo.id}_$index" },
+                                        contentType = { _, _ -> "memo_thumb" }
+                                    ) { _, memo ->
+                                        val path = memo.image_url
+                                        if (isPrivatePath(path)) {
+                                            LaunchedEffect(path) {
+                                                viewModel.resolveMemoImageUrl(path)
+                                            }
+                                        }
+                                        val thumbModel = when {
+                                            path.isBlank() -> null
+                                            isPrivatePath(path) -> signedMemoUrls[path]
+                                            else -> path
+                                        }
+                                        Card(
+                                            modifier = Modifier
+                                                .width(145.dp)
+                                                .clickable { showMemosDialog = true }
+                                                .testTag("home_memo_thumb_${memo.id}"),
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                        ) {
+                                            Column {
+                                                Box(
                                                     modifier = Modifier
-                                                        .align(Alignment.BottomStart)
-                                                        .padding(6.dp)
+                                                        .fillMaxWidth()
+                                                        .height(115.dp)
+                                                        .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
+                                                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                                                    contentAlignment = Alignment.Center
                                                 ) {
+                                                    if (thumbModel != null && thumbModel.isNotBlank()) {
+                                                        AsyncImage(
+                                                            model = thumbModel,
+                                                            contentDescription = memo.title,
+                                                            contentScale = ContentScale.Crop,
+                                                            modifier = Modifier.fillMaxSize()
+                                                        )
+                                                    } else {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Favorite,
+                                                            contentDescription = null,
+                                                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                                                            modifier = Modifier.size(32.dp)
+                                                        )
+                                                    }
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = Color.Black.copy(alpha = 0.65f),
+                                                        modifier = Modifier
+                                                            .align(Alignment.BottomStart)
+                                                            .padding(6.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = memo.user_name,
+                                                            color = Color.White,
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+                                                Column(modifier = Modifier.padding(8.dp)) {
                                                     Text(
-                                                        text = memo.user_name,
-                                                        color = Color.White,
-                                                        fontSize = 10.sp,
+                                                        text = memo.title.ifBlank { "Memory" },
+                                                        fontSize = 12.sp,
                                                         fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        maxLines = 1
+                                                    )
+                                                    Text(
+                                                        text = memo.date,
+                                                        fontSize = 10.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
                                                 }
-                                            }
-                                            Column(modifier = Modifier.padding(8.dp)) {
-                                                Text(
-                                                    text = memo.title.ifBlank { "Memory 💕" },
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    maxLines = 1
-                                                )
-                                                Text(
-                                                    text = memo.date,
-                                                    fontSize = 10.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
                                             }
                                         }
                                     }

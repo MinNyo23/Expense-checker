@@ -61,6 +61,7 @@ fun HistoryScreen(
     modifier: Modifier = Modifier
 ) {
     val expenses by viewModel.expenses.collectAsStateWithLifecycle()
+    val expensesState by viewModel.expensesState.collectAsStateWithLifecycle()
     val userSession by viewModel.userSession.collectAsStateWithLifecycle()
 
     var searchQuery by remember { mutableStateOf("") }
@@ -189,50 +190,90 @@ fun HistoryScreen(
             }
         }
 
-        // Expense List
-        if (filteredList.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.size(54.dp)
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = "No matching expenses found",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        } else {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                itemsIndexed(
-                    items = filteredList,
-                    key = { idx, exp -> "hist_${exp.id}_$idx" },
-                    contentType = { _, _ -> "expense" }
-                ) { _, expense ->
-                    ExpenseItemCard(
-                        expense = expense,
-                        currentUserName = userSession.userName,
-                        onDeleteClick = { expenseToDelete = expense },
-                        onLocationClick = { onNavigateToMap() }
-                    )
+        // Expense List / Loading / Error + Retry
+        when (val state = expensesState) {
+            is com.example.data.model.ResourceState.Loading -> {
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator()
                 }
-                item(key = "history_footer_spacer", contentType = "spacer") {
-                    Spacer(modifier = Modifier.height(20.dp))
+            }
+
+            is com.example.data.model.ResourceState.Error -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = state.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    androidx.compose.material3.Button(
+                        onClick = { viewModel.retryExpenses() },
+                        modifier = Modifier.testTag("retry_expenses_button")
+                    ) {
+                        Text("Retry")
+                    }
+                }
+            }
+
+            else -> {
+                if (filteredList.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(54.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "No matching expenses found",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        itemsIndexed(
+                            items = filteredList,
+                            key = { idx, exp -> "hist_${exp.id}_$idx" },
+                            contentType = { _, _ -> "expense" }
+                        ) { _, expense ->
+                            ExpenseItemCard(
+                                expense = expense,
+                                currentUserName = userSession.userName,
+                                onDeleteClick = { expenseToDelete = expense },
+                                onLocationClick = { onNavigateToMap() }
+                            )
+                        }
+                        item(key = "history_footer_spacer", contentType = "spacer") {
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
+                    }
                 }
             }
         }

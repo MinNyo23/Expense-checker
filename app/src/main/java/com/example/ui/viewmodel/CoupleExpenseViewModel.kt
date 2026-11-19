@@ -300,7 +300,7 @@ class CoupleExpenseViewModel(application: Application) : AndroidViewModel(applic
 
         // 2. React to verified AuthState transitions (RLS-scoped loading)
         viewModelScope.launch {
-            authState.distinctUntilChanged().collect { state ->
+            authState.collect { state ->
                 when (state) {
                     is AuthState.SignedIn -> {
                         val existingSession = userSession.value

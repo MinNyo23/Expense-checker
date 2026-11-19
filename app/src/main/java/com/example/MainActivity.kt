@@ -83,6 +83,7 @@ import com.example.ui.theme.RosePrimary
 import com.example.ui.viewmodel.CoupleExpenseViewModel
 
 import android.view.WindowManager
+import coil.Coil
 import com.example.data.model.AuthState
 import com.example.ui.components.PermissionRequestDialog
 import com.example.ui.screens.AccountPendingScreen

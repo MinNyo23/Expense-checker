@@ -11,11 +11,10 @@ plugins {
 
 android {
   namespace = "com.example"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
+  compileSdk = 37
 
   defaultConfig {
     applicationId = "com.aistudio.coupleexpense.qxyv"
-    // supabase-kt 3.x requires Android API 26 or newer.
     minSdk = 26
     targetSdk = 36
     versionCode = 1
@@ -110,13 +109,14 @@ dependencies {
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   implementation(libs.kotlinx.serialization.json)
-  // Supabase Kotlin SDK
+  // Supabase Kotlin SDK (3.9.0 BOM)
   implementation(platform(libs.supabase.bom))
   implementation(libs.supabase.auth)
   implementation(libs.supabase.postgrest)
   implementation(libs.supabase.storage)
-  implementation(libs.supabase.realtime)
-  implementation(libs.ktor.client.okhttp)
+  // Optional: realtime-kt (SupabaseClientManager handles Realtime WebSocket directly via OkHttp)
+  // implementation(libs.supabase.realtime)
+  implementation(libs.ktor.client.android)
   implementation(libs.firebase.ai)
   // Uncomment to use Firestore:
   // implementation(libs.firebase.firestore)

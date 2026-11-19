@@ -403,16 +403,20 @@ class SupabaseClientManager(
     }
 
     fun getSupabaseUrl(): String {
-        val providerUrl = clientProvider?.supabaseUrl.orEmpty()
-        return when {
-            providerUrl.isNotBlank() && !providerUrl.contains("your-project") -> providerUrl
-            BuildConfig.SUPABASE_URL.isNotBlank() && !BuildConfig.SUPABASE_URL.contains("your-project") ->
-                normalizeSupabaseUrl(BuildConfig.SUPABASE_URL)
-            else -> "https://your-project.supabase.co"
+        if (clientProvider != null) {
+            return clientProvider.supabaseUrl.ifBlank { "https://your-project.supabase.co" }
+        }
+        return if (BuildConfig.SUPABASE_URL.isNotBlank() && !BuildConfig.SUPABASE_URL.contains("your-project")) {
+            normalizeSupabaseUrl(BuildConfig.SUPABASE_URL)
+        } else {
+            "https://your-project.supabase.co"
         }
     }
 
     fun getSupabaseKey(): String {
+        if (clientProvider != null) {
+            return clientProvider.anonKey
+        }
         return if (BuildConfig.SUPABASE_ANON_KEY.isNotBlank() && !BuildConfig.SUPABASE_ANON_KEY.contains("your-anon-key")) {
             BuildConfig.SUPABASE_ANON_KEY.trim()
         } else {
@@ -425,6 +429,9 @@ class SupabaseClientManager(
     }
 
     fun isConfigured(): Boolean {
+        if (clientProvider != null) {
+            return clientProvider.isConfigured
+        }
         val url = getSupabaseUrl()
         val key = getSupabaseKey()
         return url.startsWith("https://") && !url.contains("your-project") && key.length > 20
@@ -1474,8 +1481,8 @@ class SupabaseClientManager(
         fetchCoupleSyncCountsViaRest(coupleId)
     }
 
-    private suspend fun fetchCoupleSyncCountsViaRest(coupleId: String): Result<CoupleSyncCounts> = coroutineScope {
-        try {
+    private suspend fun fetchCoupleSyncCountsViaRest(coupleId: String): Result<CoupleSyncCounts> = try {
+        coroutineScope {
             val expDeferred = async { probeTableMeta("expenses", "couple_id=eq.$coupleId", "created_at") }
             val memoDeferred = async { probeTableMeta("memos", "couple_id=eq.$coupleId", "created_at") }
             val profileDeferred = async { probeTableMeta("profiles", "couple_id=eq.$coupleId", "updated_at") }
@@ -1510,10 +1517,12 @@ class SupabaseClientManager(
                     money_accounts_latest = money?.second?.toLongOrNull()
                 )
             )
-        } catch (e: Exception) {
-            Log.w(tag, "REST count probe failed: ${e.message}")
-            Result.failure(e)
         }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(tag, "REST count probe failed: ${e.message}")
+        Result.failure(e)
     }
 
     private fun probeTableMeta(

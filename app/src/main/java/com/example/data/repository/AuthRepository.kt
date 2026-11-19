@@ -116,10 +116,11 @@ class SupabaseAuthDataSource(
         clientProvider.auth.resetPasswordForEmail(email)
     }
 
-    override suspend fun updatePassword(newPassword: String) = withContext(Dispatchers.IO) {
+    override suspend fun updatePassword(newPassword: String): Unit = withContext(Dispatchers.IO) {
         clientProvider.auth.updateUser {
             this.password = newPassword
         }
+        Unit
     }
 
     override suspend fun getCurrentSession(): AuthSessionInfo? = withContext(Dispatchers.IO) {

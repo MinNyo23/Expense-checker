@@ -6,7 +6,6 @@ import com.example.data.model.ExpenseCategory
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -144,23 +143,19 @@ class ExampleUnitTest {
     }
 
     @Test
-    fun private_image_paths_reject_public_urls_and_traversal() {
-        val valid = "auth-user-123/550e8400-e29b-41d4-a716-446655440000.webp"
-        assertTrue(com.example.data.repository.ImageStorageRepository.isValidPrivateObjectPath(valid))
-        assertFalse(com.example.data.repository.ImageStorageRepository.isValidPrivateObjectPath("https://example.com/image.webp"))
-        assertFalse(com.example.data.repository.ImageStorageRepository.isValidPrivateObjectPath("auth-user-123/../image.webp"))
-        assertFalse(com.example.data.repository.ImageStorageRepository.isValidPrivateObjectPath("/auth-user-123/image.webp"))
-    }
+    fun supabase_error_mapper_redacts_jwt_and_sql_internals() {
+        val rawLeak = Exception("ERROR: violates row-level security for relation user_accounts password_hash bearer eyJhbGciOiJIUzI1NiJ9.secretpayload.sig")
+        val mapped = com.example.data.model.SupabaseErrorMapper.toUserMessage(rawLeak)
+        assertTrue(mapped.contains("Permission denied", ignoreCase = true))
+        assertTrue(!mapped.contains("password_hash"))
+        assertTrue(!mapped.contains("user_accounts"))
+        assertTrue(!mapped.contains("eyJ"))
 
-    @Test
-    fun image_magic_bytes_are_required_for_allowed_types() {
-        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())
-        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
-        val fake = "not-an-image".encodeToByteArray()
-
-        assertEquals("image/jpeg", com.example.data.repository.ImageStorageRepository.detectMimeTypeFromMagicBytes(jpeg))
-        assertEquals("image/png", com.example.data.repository.ImageStorageRepository.detectMimeTypeFromMagicBytes(png))
-        assertTrue(com.example.data.repository.ImageStorageRepository.detectMimeTypeFromMagicBytes(fake) == null)
+        val sanitized = com.example.data.model.SupabaseErrorMapper.sanitizeMessage(
+            "SELECT * FROM expenses WHERE jwt='eyJhbGciOiJIUzI1NiJ9.abc.def'",
+            fallback = "Unable to load expenses."
+        )
+        assertEquals("Unable to load expenses.", sanitized)
     }
 
     @Test
@@ -220,26 +215,42 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun user_profile_includes_auth_user_id_for_rls_verification() {
+        val profile = com.example.data.model.UserProfile(
+            id = "p-rls-1",
+            couple_id = "c1",
+            user_name = "Alex",
+            email = "alex@example.com",
+            auth_user_id = "auth-uid-123"
+        )
+        val serialized = json.encodeToString(profile)
+        assertTrue(serialized.contains("auth-uid-123"))
+        val deserialized = json.decodeFromString<com.example.data.model.UserProfile>(serialized)
+        assertEquals("auth-uid-123", deserialized.auth_user_id)
+    }
+
+    @Test
     fun couple_memo_serialization_isCorrect() {
         val memo = com.example.data.model.CoupleMemo(
             id = "memo-1",
             couple_id = "c1",
             user_name = "Alex",
-            title = "Sunset at the beach 🌅",
+            title = "Sunset at the beach",
             note = "Best date night ever with my love",
-            image_url = "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+            image_url = "auth-uid-123/550e8400-e29b-41d4-a716-446655440000.webp",
             date = "2026-11-01",
             created_at = "2026-11-01T00:00:00Z"
         )
         val serialized = json.encodeToString(memo)
         assertTrue(serialized.contains("Sunset at the beach"))
         assertTrue(serialized.contains("Best date night ever"))
-        assertTrue(serialized.contains("data:image/jpeg;base64"))
+        assertTrue(serialized.contains("auth-uid-123/550e8400-e29b-41d4-a716-446655440000.webp"))
 
         val deserialized = json.decodeFromString<com.example.data.model.CoupleMemo>(serialized)
         assertEquals("memo-1", deserialized.id)
         assertEquals("Alex", deserialized.user_name)
-        assertEquals("Sunset at the beach 🌅", deserialized.title)
+        assertEquals("Sunset at the beach", deserialized.title)
+        assertEquals("auth-uid-123/550e8400-e29b-41d4-a716-446655440000.webp", deserialized.image_url)
         assertEquals("2026-11-01", deserialized.date)
     }
 

@@ -152,8 +152,7 @@ fun ProfileScreen(
     var pinFeedbackMessage by remember { mutableStateOf<String?>(null) }
     var isPinSuccess by remember { mutableStateOf(false) }
 
-    // Backend Account Password State
-    var currentAccountPassword by remember { mutableStateOf("") }
+    // Account Password State (Supabase Auth)
     var newAccountPassword by remember { mutableStateOf("") }
     var confirmAccountPassword by remember { mutableStateOf("") }
     var showAccountPasswords by remember { mutableStateOf(false) }
@@ -161,6 +160,7 @@ fun ProfileScreen(
     var isAccountPasswordSuccess by remember { mutableStateOf(false) }
     var showForgotPasswordDialog by remember { mutableStateOf(false) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
+    val signedMemoUrls by viewModel.signedMemoUrls.collectAsStateWithLifecycle()
 
     // Photo picker launcher (Android Photo Picker - zero permissions required)
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -247,12 +247,35 @@ fun ProfileScreen(
         ) {
             item(key = "profile_header", contentType = "header") {
                 Spacer(modifier = Modifier.height(4.dp))
+                val isPrivatePath = remember {
+                    { path: String ->
+                        val p = path.trim()
+                        p.isNotBlank() &&
+                            !p.startsWith("http://") &&
+                            !p.startsWith("https://") &&
+                            !p.startsWith("data:") &&
+                            !p.startsWith("content:") &&
+                            !p.startsWith("file:") &&
+                            !p.startsWith("/")
+                    }
+                }
+                val rawMyAvatar = myProfile?.avatar_url?.ifBlank { userSession.avatarPath } ?: userSession.avatarPath
+                val rawPartnerAvatar = partnerProfile?.avatar_url?.ifBlank { userSession.partnerAvatarUrl } ?: userSession.partnerAvatarUrl
+                if (selectedAvatarUri == null && isPrivatePath(rawMyAvatar)) {
+                    LaunchedEffect(rawMyAvatar) { viewModel.resolveMemoImageUrl(rawMyAvatar) }
+                }
+                if (isPrivatePath(rawPartnerAvatar)) {
+                    LaunchedEffect(rawPartnerAvatar) { viewModel.resolveMemoImageUrl(rawPartnerAvatar) }
+                }
+                val resolvedMyAvatar: Any? = selectedAvatarUri ?: if (isPrivatePath(rawMyAvatar)) signedMemoUrls[rawMyAvatar] else rawMyAvatar
+                val resolvedPartnerAvatar: Any? = if (isPrivatePath(rawPartnerAvatar)) signedMemoUrls[rawPartnerAvatar] else rawPartnerAvatar
+
                 // Dual Couple Synchronized Header Card
                 DualCoupleHeaderCard(
                     userSessionName = userSession.userName,
-                    userAvatar = selectedAvatarUri ?: myProfile?.avatar_url ?: userSession.avatarPath,
+                    userAvatar = resolvedMyAvatar,
                     partnerName = partnerProfile?.user_name?.ifBlank { userSession.partnerName } ?: userSession.partnerName,
-                    partnerAvatar = partnerProfile?.avatar_url?.ifBlank { userSession.partnerAvatarUrl } ?: userSession.partnerAvatarUrl,
+                    partnerAvatar = resolvedPartnerAvatar,
                     coupleCode = userSession.coupleCode
                 )
             }
@@ -976,7 +999,7 @@ fun ProfileScreen(
             }
 
             item(key = "profile_account_password", contentType = "form_card") {
-                // Section 3B: Backend Account Login Password & OTP Recovery
+                // Section 3B: Supabase Auth Account Login Password & Email Reset
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -999,7 +1022,7 @@ fun ProfileScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Account Login Password",
+                                text = "Supabase Auth Account Password",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -1007,7 +1030,7 @@ fun ProfileScreen(
 
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Encrypted & verified in the backend. Forgot your password? Reset it anytime with an email OTP.",
+                            text = "Managed securely by Supabase Auth. Update your sign-in password or request a password reset email anytime.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1015,10 +1038,10 @@ fun ProfileScreen(
                         Spacer(modifier = Modifier.height(14.dp))
 
                         OutlinedTextField(
-                            value = currentAccountPassword,
-                            onValueChange = { currentAccountPassword = it; accountPasswordFeedback = null },
-                            label = { Text("Current Account Password") },
-                            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                            value = newAccountPassword,
+                            onValueChange = { newAccountPassword = it; accountPasswordFeedback = null },
+                            label = { Text("New Password (min 6 chars)") },
+                            leadingIcon = { Icon(Icons.Default.LockReset, contentDescription = null) },
                             trailingIcon = {
                                 IconButton(onClick = { showAccountPasswords = !showAccountPasswords }) {
                                     Icon(
@@ -1027,22 +1050,6 @@ fun ProfileScreen(
                                     )
                                 }
                             },
-                            visualTransformation = if (showAccountPasswords) VisualTransformation.None else PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("profile_old_password_input"),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        OutlinedTextField(
-                            value = newAccountPassword,
-                            onValueChange = { newAccountPassword = it; accountPasswordFeedback = null },
-                            label = { Text("New Password (min 6 chars)") },
-                            leadingIcon = { Icon(Icons.Default.LockReset, contentDescription = null) },
                             visualTransformation = if (showAccountPasswords) VisualTransformation.None else PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             singleLine = true,
@@ -1081,15 +1088,13 @@ fun ProfileScreen(
 
                         Button(
                             onClick = {
-                                viewModel.changeAccountPassword(
-                                    oldPassword = currentAccountPassword,
+                                viewModel.updateAuthPassword(
                                     newPassword = newAccountPassword,
                                     confirmPassword = confirmAccountPassword
                                 ) { success, msg ->
                                     accountPasswordFeedback = msg
                                     isAccountPasswordSuccess = success
                                     if (success) {
-                                        currentAccountPassword = ""
                                         newAccountPassword = ""
                                         confirmAccountPassword = ""
                                     }
@@ -1101,7 +1106,7 @@ fun ProfileScreen(
                                 .testTag("change_account_password_button"),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Update Backend Password", fontWeight = FontWeight.Bold)
+                            Text("Update Password", fontWeight = FontWeight.Bold)
                         }
 
                         Spacer(modifier = Modifier.height(6.dp))
@@ -1113,7 +1118,7 @@ fun ProfileScreen(
                                 .testTag("profile_forgot_password_button")
                         ) {
                             Text(
-                                text = "Forgot Password? Reset via Email OTP",
+                                text = "Forgot Password? Send Reset Email",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -1386,9 +1391,9 @@ fun ProfileScreen(
             onDismiss = { showForgotPasswordDialog = false },
             onPasswordResetSuccess = {
                 showForgotPasswordDialog = false
-                accountPasswordFeedback = "Password reset via Email OTP successfully!"
+                accountPasswordFeedback = "Password reset email sent! Check your inbox."
                 isAccountPasswordSuccess = true
-                Toast.makeText(context, "Password updated successfully!", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Password reset email sent!", Toast.LENGTH_LONG).show()
             }
         )
     }

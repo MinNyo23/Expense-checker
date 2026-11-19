@@ -9,11 +9,9 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.postgrest
-import io.github.jan.supabase.realtime.Realtime
-import io.github.jan.supabase.realtime.realtime
 import io.github.jan.supabase.storage.Storage
 import io.github.jan.supabase.storage.storage
-import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.engine.android.Android
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.ConnectionPool
@@ -38,6 +36,7 @@ class SupabaseClientProvider(
 
     val supabaseUrl: String = normalizeSupabaseUrl(rawUrl)
     private val supabaseAnonKey: String = rawAnonKey.trim()
+    internal val anonKey: String get() = supabaseAnonKey
 
     val host: String
         get() = runCatching { URI(supabaseUrl).host.orEmpty() }.getOrDefault("")
@@ -68,8 +67,9 @@ class SupabaseClientProvider(
             supabaseUrl = supabaseUrl.ifBlank { "https://placeholder.supabase.co" },
             supabaseKey = supabaseAnonKey.ifBlank { "placeholder-anon-key" }
         ) {
-            httpEngine = OkHttp.create {
-                preconfigured = okHttpClient
+            httpEngine = Android.create {
+                connectTimeout = 10_000
+                socketTimeout = 20_000
             }
             install(Auth) {
                 alwaysAutoRefresh = true
@@ -78,14 +78,12 @@ class SupabaseClientProvider(
             }
             install(Postgrest)
             install(Storage)
-            install(Realtime)
         }
     }
 
     val auth get() = client.auth
     val postgrest get() = client.postgrest
     val storage get() = client.storage
-    val realtime get() = client.realtime
 
     suspend fun testConnection(): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         if (!isConfigured) {
