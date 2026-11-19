@@ -201,7 +201,7 @@ class ExampleUnitTest {
             id = "p1",
             couple_id = "c1",
             user_name = "Alex",
-            email = "minnyo.work@gmail.com",
+            email = "test@example.com",
             date_of_birth = "2000-05-15",
             avatar_url = "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
             role = "partner",
@@ -209,13 +209,13 @@ class ExampleUnitTest {
         )
         val serialized = json.encodeToString(profile)
         assertTrue(serialized.contains("Alex"))
-        assertTrue(serialized.contains("minnyo.work@gmail.com"))
+        assertTrue(serialized.contains("test@example.com"))
         assertTrue(serialized.contains("data:image/jpeg;base64"))
 
         val deserialized = json.decodeFromString<com.example.data.model.UserProfile>(serialized)
         assertEquals("p1", deserialized.id)
         assertEquals("Alex", deserialized.user_name)
-        assertEquals("minnyo.work@gmail.com", deserialized.email)
+        assertEquals("test@example.com", deserialized.email)
         assertEquals("2000-05-15", deserialized.date_of_birth)
     }
 

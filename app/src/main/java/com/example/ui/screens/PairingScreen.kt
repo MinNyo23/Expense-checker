@@ -273,7 +273,7 @@ fun PairingScreen(
                                 inlineError = null
                             },
                             label = { Text("Email Address") },
-                            placeholder = { Text("you@example.com") },
+                            placeholder = { Text("test@example.com") },
                             leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                             singleLine = true,
@@ -393,7 +393,7 @@ fun PairingScreen(
                             value = emailInput,
                             onValueChange = { emailInput = it.trim(); inlineError = null },
                             label = { Text("Email Address") },
-                            placeholder = { Text("you@example.com") },
+                            placeholder = { Text("test@example.com") },
                             leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                             singleLine = true,

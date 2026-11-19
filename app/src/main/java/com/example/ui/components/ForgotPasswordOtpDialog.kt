@@ -106,7 +106,7 @@ fun ForgotPasswordOtpDialog(
                         feedbackMsg = null
                     },
                     label = { Text("Account Email") },
-                    placeholder = { Text("you@example.com") },
+                    placeholder = { Text("test@example.com") },
                     leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     singleLine = true,
