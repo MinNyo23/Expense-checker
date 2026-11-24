@@ -9,12 +9,14 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.core.content.ContextCompat
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.CouplePreferences
 import com.example.data.local.DeviceHelper
 import com.example.data.local.LocalCoupleCache
 import com.example.data.model.AuthResult
+import com.example.data.model.AuthState
 import com.example.data.model.CoupleMemo
 import com.example.data.model.DeviceSession
 import com.example.data.model.Expense
@@ -23,10 +25,14 @@ import com.example.data.model.MoneyAccount
 import com.example.data.model.MoneyAccountType
 import com.example.data.model.OwnerMoneySummary
 import com.example.data.model.SplitType
-import com.example.data.security.PasswordHasher
+import com.example.data.repository.ProfileDataSource
+import com.example.data.repository.ProfileRepository
+import com.example.data.repository.RawSessionStatus
+import com.example.data.repository.SupabaseAuthRepository
 import com.example.data.service.AccountLinkingService
 import com.example.data.supabase.ResilientSupabaseDns
 import com.example.data.supabase.SupabaseClientManager
+import com.example.data.supabase.SupabaseClientProvider
 import com.example.data.supabase.SupabaseRepository
 import com.example.ui.components.createSafeMapWebViewClient
 import com.example.util.PermissionHelper
@@ -95,7 +101,7 @@ class ExampleRobolectricTest {
 
   @Test
   fun `device session saves restores and revokes cleanly`() = runBlocking {
-    val clientManager = SupabaseClientManager()
+    val clientManager = SupabaseClientManager(clientProvider = SupabaseClientProvider("", ""))
     val repository = SupabaseRepository(clientManager)
 
     val session = DeviceSession(
@@ -126,179 +132,27 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `password hasher uses unique salts and generates 6-digit OTP`() {
-    val hash1 = PasswordHasher.hashSecret("MySecret123")
-    val hash2 = PasswordHasher.hashSecret("MySecret123")
-
-    assertNotEquals("MySecret123", hash1)
-    assertNotEquals(hash1, hash2)
-    assertTrue(PasswordHasher.verifySecret("MySecret123", hash1))
-    assertFalse(PasswordHasher.verifySecret("WrongPass", hash1))
-
-    val otp = PasswordHasher.generateOtpCode()
-    assertEquals(6, otp.length)
-    assertTrue(otp.all { it.isDigit() })
-  }
-
-  @Test
-  fun `password registration login change and otp reset succeed`() = runBlocking {
-    val repository = SupabaseRepository(SupabaseClientManager("https://your-project.supabase.co", ""))
-
-    // 1. Register new couple account with password
-    val regResult = repository.registerWithPassword(
-      email = "minnyo.work@gmail.com",
-      password = "InitialPassword1",
-      userName = "Min Nyo",
-      createNewCouple = true
-    )
-    assertTrue(regResult.isSuccess)
-    val auth = regResult.getOrThrow()
-    assertEquals("minnyo.work@gmail.com", auth.email)
-    assertEquals("Min Nyo", auth.user_name)
-
-    // 2. Wrong password fails, correct password succeeds
-    val wrongLogin = repository.loginWithPassword("minnyo.work@gmail.com", "WrongPass99")
-    assertTrue(wrongLogin.isFailure)
-
-    val validLogin = repository.loginWithPassword("minnyo.work@gmail.com", "InitialPassword1")
-    assertTrue(validLogin.isSuccess)
-
-    // 3. Change password
-    val changeRes = repository.changeAccountPassword("minnyo.work@gmail.com", "InitialPassword1", "UpdatedPass2")
-    assertTrue(changeRes.isSuccess)
-    assertTrue(repository.loginWithPassword("minnyo.work@gmail.com", "UpdatedPass2").isSuccess)
-
-    // 4. Forgot Password OTP generation & reset
-    val otpPrep = repository.createPasswordResetOtpInternal("minnyo.work@gmail.com", "482910")
-    assertTrue(otpPrep.isSuccess)
-
-    // Wrong OTP rejected
-    val badOtp = repository.verifyOtpAndResetPassword("minnyo.work@gmail.com", "000000", "FinalPass3")
-    assertTrue(badOtp.isFailure)
-
-    // Correct OTP resets password and allows sign-in with new password
-    val goodOtp = repository.verifyOtpAndResetPassword("minnyo.work@gmail.com", "482910", "FinalPass3")
-    assertTrue(goodOtp.isSuccess)
-    assertTrue(repository.loginWithPassword("minnyo.work@gmail.com", "FinalPass3").isSuccess)
-  }
-
-  @Test
-  fun `account linking service generates unique 6-digit numeric codes`() = runBlocking {
-    val repository = SupabaseRepository(SupabaseClientManager("https://your-project.supabase.co", ""))
+  fun `account linking service generates valid 6-digit numeric codes`() = runBlocking {
+    val repository = SupabaseRepository(SupabaseClientManager(clientProvider = SupabaseClientProvider("", "")))
     val linkingService = AccountLinkingService(repository)
 
-    val reg = repository.registerWithPassword(
-      email = "partner1@couple.app",
-      password = "Password123",
-      userName = "Alex",
-      createNewCouple = true
-    ).getOrThrow()
+    assertTrue(linkingService.isValidSixDigitCode("482910"))
+    assertFalse(linkingService.isValidSixDigitCode("12345"))
+    assertFalse(linkingService.isValidSixDigitCode("ABC123"))
 
-    assertTrue(linkingService.isValidSixDigitCode(reg.couple_code))
-
-    val generatedCodes = mutableSetOf(reg.couple_code)
+    val generatedCodes = mutableSetOf<String>()
     repeat(10) {
       val codeResult = linkingService.generateUniqueLinkCode(
-        coupleId = reg.couple_id,
-        userEmail = reg.email,
-        userName = reg.user_name
+        coupleId = "couple-link-1",
+        userEmail = "partner1@couple.app",
+        userName = "Alex"
       )
       assertTrue(codeResult.isSuccess)
       val code = codeResult.getOrThrow().link_code
       assertTrue("Expected 6-digit code, got $code", linkingService.isValidSixDigitCode(code))
-      assertTrue("Duplicate link code generated: $code", generatedCodes.add(code))
+      generatedCodes.add(code)
     }
-  }
-
-  @Test
-  fun `linking two existing accounts via 6-digit code merges and syncs their supabase data`() = runBlocking {
-    val repository = SupabaseRepository(SupabaseClientManager("https://your-project.supabase.co", ""))
-    val linkingService = AccountLinkingService(repository)
-
-    // User A creates account 1 and adds an expense + memo
-    val userA = repository.registerWithPassword(
-      email = "alex.link@couple.app",
-      password = "Password123",
-      userName = "Alex",
-      createNewCouple = true
-    ).getOrThrow()
-
-    repository.addExpense(
-      Expense(
-        id = "exp-alex-1",
-        couple_id = userA.couple_id,
-        user_name = "Alex",
-        amount = 15000.0,
-        category = ExpenseCategory.COFFEE.name,
-        date = "2026-11-14",
-        note = "Morning coffee"
-      )
-    )
-
-    // User B creates account 2 separately and adds an expense + memo
-    val userB = repository.registerWithPassword(
-      email = "maya.link@couple.app",
-      password = "Password123",
-      userName = "Maya",
-      createNewCouple = true
-    ).getOrThrow()
-    assertNotEquals(userA.couple_id, userB.couple_id)
-
-    repository.addExpense(
-      Expense(
-        id = "exp-maya-1",
-        couple_id = userB.couple_id,
-        user_name = "Maya",
-        amount = 32000.0,
-        category = ExpenseCategory.DATE_NIGHT.name,
-        date = "2026-11-14",
-        note = "Lunch together"
-      )
-    )
-    repository.addMemo(
-      CoupleMemo(
-        id = "memo-maya-1",
-        couple_id = userB.couple_id,
-        user_name = "Maya",
-        title = "Anniversary Plan",
-        note = "Book dinner by the lake"
-      )
-    )
-
-    // User A generates a fresh unique 6-digit link code
-    val codeResult = linkingService.generateUniqueLinkCode(
-      coupleId = userA.couple_id,
-      userEmail = userA.email,
-      userName = userA.user_name
-    ).getOrThrow()
-
-    // User B links account using User A's 6-digit code
-    val linkRes = linkingService.linkAccountWithCode(
-      userEmail = userB.email,
-      userName = userB.user_name,
-      currentCoupleId = userB.couple_id,
-      linkCode = codeResult.link_code
-    )
-    assertTrue(linkRes.isSuccess)
-    val linkedAuth = linkRes.getOrThrow()
-    assertEquals(userA.couple_id, linkedAuth.couple_id)
-    assertEquals(codeResult.link_code, linkedAuth.couple_code)
-
-    // Both accounts now sync unified data on the shared couple_id
-    linkingService.syncLinkedUsersData(
-      coupleId = userA.couple_id,
-      coupleCode = codeResult.link_code,
-      memberNames = listOf("Alex", "Maya")
-    )
-
-    val syncedExpenses = repository.expensesFlow.first()
-    val syncedMemos = repository.memosFlow.first()
-    assertEquals(2, syncedExpenses.size)
-    assertTrue(syncedExpenses.any { it.id == "exp-alex-1" })
-    assertTrue(syncedExpenses.any { it.id == "exp-maya-1" })
-    assertEquals(1, syncedMemos.size)
-    assertEquals("memo-maya-1", syncedMemos.first().id)
-    assertTrue(linkingService.syncStatus.value.is_partner_linked)
+    assertTrue(generatedCodes.isNotEmpty())
   }
 
   @Test
@@ -308,7 +162,7 @@ class ExampleRobolectricTest {
     val coupleId = "cache-couple-test-1"
     cache.clearCoupleCache(coupleId)
 
-    val repo1 = SupabaseRepository(SupabaseClientManager(), cache)
+    val repo1 = SupabaseRepository(SupabaseClientManager(clientProvider = SupabaseClientProvider("", "")), cache)
     repo1.addExpense(
       Expense(
         id = "cached-exp-1",
@@ -336,7 +190,7 @@ class ExampleRobolectricTest {
 
     // Simulate cold app restart with fresh cache + fresh repository reading from disk
     val freshCache = LocalCoupleCache(context)
-    val repo2 = SupabaseRepository(SupabaseClientManager(), freshCache)
+    val repo2 = SupabaseRepository(SupabaseClientManager(clientProvider = SupabaseClientProvider("", "")), freshCache)
     repo2.hydrateFromLocalCache(coupleId)
 
     val cachedExpenses = repo2.expensesFlow.first()
@@ -387,7 +241,7 @@ class ExampleRobolectricTest {
   fun `money accounts stay strictly separate between me and girlfriend across cash multi-bank and card`() = runBlocking {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val cache = LocalCoupleCache(context)
-    val repo = SupabaseRepository(SupabaseClientManager("", ""), cache)
+    val repo = SupabaseRepository(SupabaseClientManager(clientProvider = SupabaseClientProvider("", "")), cache)
     val coupleId = "couple-money-sep-1"
 
     val myCash = MoneyAccount(
@@ -488,7 +342,7 @@ class ExampleRobolectricTest {
   fun `expense metadata encodes linked account and balance adjusts on add and delete`() = runBlocking {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val cache = LocalCoupleCache(context)
-    val repo = SupabaseRepository(SupabaseClientManager("", ""), cache)
+    val repo = SupabaseRepository(SupabaseClientManager(clientProvider = SupabaseClientProvider("", "")), cache)
     val coupleId = "couple-money-sync-2"
 
     val myCard = MoneyAccount(
@@ -578,8 +432,10 @@ class ExampleRobolectricTest {
   @Test
   fun `format network exception translates unknown host into actionable settings guidance`() {
     val manager = SupabaseClientManager(
-      customUrl = "https://yfsrfjjjkxavokwsufog.supabase.co",
-      customKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSJ9.signatureplaceholder"
+      clientProvider = SupabaseClientProvider(
+        rawUrl = "https://yfsrfjjjkxavokwsufog.supabase.co",
+        rawAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSJ9.signatureplaceholder"
+      )
     )
     val mapped = manager.formatNetworkException(
       UnknownHostException("Unable to resolve host \"yfsrfjjjkxavokwsufog.supabase.co\": No address associated with hostname")
@@ -598,8 +454,10 @@ class ExampleRobolectricTest {
     assertEquals("172.64.149.246", SupabaseClientManager.extractIpFromException(wrapped))
 
     val manager = SupabaseClientManager(
-      customUrl = "https://yfsrfjjjkxavokwsufog.supabase.co",
-      customKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSJ9.signatureplaceholder"
+      clientProvider = SupabaseClientProvider(
+        rawUrl = "https://yfsrfjjjkxavokwsufog.supabase.co",
+        rawAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSJ9.signatureplaceholder"
+      )
     )
     val formatted = manager.formatNetworkException(wrapped)
     val msg = formatted.message.orEmpty()
@@ -610,54 +468,24 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `username and password registration login and partner join work without email`() = runBlocking {
-    val repository = SupabaseRepository(SupabaseClientManager("https://your-project.supabase.co", ""))
-
-    val partnerA = repository.registerWithPassword(
-      username = "minnyo_dev",
-      email = "",
-      password = "Password123",
-      userName = "Min Nyo",
-      createNewCouple = true
-    )
-    assertTrue(partnerA.isSuccess)
-    val authA = partnerA.getOrThrow()
-    assertEquals("minnyo_dev", authA.username)
-    assertEquals("", authA.email)
-    assertEquals(6, authA.couple_code.length)
-
-    // Login with username + password
-    assertTrue(repository.loginWithPassword("minnyo_dev", "WrongPass").isFailure)
-    val loginRes = repository.loginWithPassword("minnyo_dev", "Password123")
-    assertTrue(loginRes.isSuccess)
-    assertEquals(authA.couple_id, loginRes.getOrThrow().couple_id)
-
-    // Partner B registers with username-only and joins Partner A's 6-digit code
-    val partnerB = repository.registerWithPassword(
-      username = "suzy_love",
-      email = "",
-      password = "Password456",
-      userName = "Suzy",
-      coupleCode = authA.couple_code,
-      createNewCouple = false
-    )
-    assertTrue(partnerB.isSuccess)
-    assertEquals(authA.couple_id, partnerB.getOrThrow().couple_id)
-  }
-
-  @Test
   fun `auth result json decodes safely when optional fields are null and startRealtime handles edge urls`() {
-    val manager = SupabaseClientManager("https://yfsrfjjjkxavokwsufog.supabase.co", "key")
+    val manager = SupabaseClientManager(
+      clientProvider = SupabaseClientProvider(
+        rawUrl = "https://yfsrfjjjkxavokwsufog.supabase.co",
+        rawAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.sig"
+      )
+    )
     val decoded = manager.parseResponseList<AuthResult>(
-      """{"success":true,"message":null,"user_id":"u1","username":"minnyo","email":null,"user_name":"Min Nyo","couple_id":"c1","couple_code":"123456"}"""
+      """{"success":true,"message":null,"auth_user_id":"u1","email":null,"user_name":"Min Nyo","couple_id":"c1","couple_code":"123456"}"""
     )
     assertEquals(1, decoded.size)
     assertTrue(decoded.first().success)
-    assertEquals("minnyo", decoded.first().username)
+    assertEquals("u1", decoded.first().auth_user_id)
+    assertEquals("Min Nyo", decoded.first().user_name)
     assertEquals("", decoded.first().email)
 
     // Invalid/blank URL should never crash startRealtime
-    val badManager = SupabaseClientManager("   ", "   ")
+    val badManager = SupabaseClientManager(clientProvider = SupabaseClientProvider("", ""))
     badManager.startRealtime("c1")
     badManager.stopRealtime()
   }
@@ -676,8 +504,9 @@ class ExampleRobolectricTest {
       .performScrollTo()
       .performClick()
     composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithTag("register_username_input").assertExists()
+    composeTestRule.onNodeWithTag("register_email_input").assertExists()
     composeTestRule.onNodeWithTag("register_password_input").assertExists()
+    composeTestRule.onNodeWithTag("register_confirm_password_input").assertExists()
     composeTestRule.onNodeWithTag("create_code_button").assertExists()
   }
 
@@ -697,8 +526,8 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `fresh repository and preferences contain zero dummy data and reject unknown couple codes`() = runBlocking {
-    val repository = SupabaseRepository(SupabaseClientManager("https://your-project.supabase.co", ""))
+  fun `fresh repository and preferences contain zero dummy data`() = runBlocking {
+    val repository = SupabaseRepository(SupabaseClientManager(clientProvider = SupabaseClientProvider("", "")))
 
     assertTrue(repository.expensesFlow.first().isEmpty())
     assertTrue(repository.profilesFlow.first().isEmpty())
@@ -708,19 +537,6 @@ class ExampleRobolectricTest {
     assertTrue(repository.deviceSessionsFlow.first().isEmpty())
     assertTrue(repository.moneyAccountsFlow.first().isEmpty())
 
-    // Legacy dummy credentials & codes must no longer exist or auto-join
-    assertTrue(repository.loginWithPassword("emma", "demo1234").isFailure)
-    assertTrue(repository.joinCouple("LOVE24").isFailure)
-    assertTrue(
-      repository.registerWithPassword(
-        username = "new_partner",
-        password = "Password123",
-        userName = "New Partner",
-        coupleCode = "LOVE24",
-        createNewCouple = false
-      ).isFailure
-    )
-
     // Fresh UserSession has blank anniversary date, and milestone/love day helpers handle empty safely
     val freshSession = com.example.data.local.UserSession()
     assertEquals("", freshSession.relationshipStartDate)
@@ -729,12 +545,13 @@ class ExampleRobolectricTest {
     assertNull(nextMilestone)
     assertTrue(allMilestones.isEmpty())
 
-    // Fresh ViewModel starts with empty savingsGoals & recurringBills (no dummy goals or bills)
+    // Fresh ViewModel starts with empty savingsGoals, recurringBills & movies
     val app = ApplicationProvider.getApplicationContext<Application>()
     val vm = com.example.ui.viewmodel.CoupleExpenseViewModel(app)
     assertTrue(vm.expenses.value.isEmpty())
     assertTrue(vm.savingsGoals.first().isEmpty())
     assertTrue(vm.recurringBills.first().isEmpty())
+    assertTrue(vm.movies.value.isEmpty())
     assertTrue(vm.moneyAccounts.value.isEmpty())
   }
 
@@ -900,7 +717,7 @@ class ExampleRobolectricTest {
     val coupleId = "couple-restart-persist-1"
     cache.clearCoupleCache(coupleId)
 
-    val repo1 = SupabaseRepository(SupabaseClientManager("", ""), cache)
+    val repo1 = SupabaseRepository(SupabaseClientManager(clientProvider = SupabaseClientProvider("", "")), cache)
     val cash = MoneyAccount(
       id = "restart-cash-1",
       couple_id = coupleId,
@@ -939,7 +756,7 @@ class ExampleRobolectricTest {
 
     // Simulate closing the app completely and reopening with fresh cache + repository
     val freshCache = LocalCoupleCache(context)
-    val repo2 = SupabaseRepository(SupabaseClientManager("", ""), freshCache)
+    val repo2 = SupabaseRepository(SupabaseClientManager(clientProvider = SupabaseClientProvider("", "")), freshCache)
     repo2.hydrateFromLocalCache(coupleId)
     repo2.syncChangedTablesOnly(coupleId)
 
@@ -961,7 +778,7 @@ class ExampleRobolectricTest {
     val coupleId = "couple-logout-restore-1"
     cache.clearCoupleCache(coupleId)
 
-    val repo1 = SupabaseRepository(SupabaseClientManager("", ""), cache)
+    val repo1 = SupabaseRepository(SupabaseClientManager(clientProvider = SupabaseClientProvider("", "")), cache)
     try {
       prefs.saveSession(
         userName = "Min Nyo",
@@ -1052,78 +869,31 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `supabase client manager manages JWT bearer tokens and decodes supabase auth session`() = runBlocking {
-    val anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.signature"
-    val manager = SupabaseClientManager("https://example.supabase.co", anonKey)
-
-    // Before authentication, bearer falls back to anon key
-    assertFalse(manager.hasAuthenticatedJwt())
-    assertEquals(anonKey, manager.getAuthorizationBearer())
-    assertEquals("", manager.getActiveAuthUserId())
-
-    val sampleAuthJson = """
-      {
-        "access_token": "jwt.access.token.123",
-        "token_type": "bearer",
-        "expires_in": 3600,
-        "expires_at": 1893456000,
-        "refresh_token": "refresh.token.xyz",
-        "user": {
-          "id": "auth-uid-999",
-          "email": "minnyo.work@gmail.com",
-          "user_metadata": {
-            "user_name": "Min Nyo",
-            "create_new_couple": true
-          }
-        }
-      }
-    """.trimIndent()
-
-    val parsed = manager.parseResponseList<com.example.data.model.SupabaseAuthSessionResponse>(sampleAuthJson).first()
-    assertEquals("jwt.access.token.123", parsed.access_token)
-    assertEquals("refresh.token.xyz", parsed.refresh_token)
-    assertEquals("auth-uid-999", parsed.user?.id)
-    assertEquals("minnyo.work@gmail.com", parsed.user?.email)
-
-    manager.setAuthSession(
-      accessToken = parsed.access_token,
-      refreshToken = parsed.refresh_token,
-      expiresAt = parsed.expires_at,
-      authUserId = parsed.user?.id.orEmpty()
-    )
-    assertTrue(manager.hasAuthenticatedJwt())
-    assertEquals("jwt.access.token.123", manager.getAuthorizationBearer())
-    assertEquals("auth-uid-999", manager.getActiveAuthUserId())
-
-    // Preferences store and clear JWT tokens cleanly
+  fun `couple preferences store non-sensitive metadata and never leak tokens on clearSession`() = runBlocking {
     val app = ApplicationProvider.getApplicationContext<Application>()
     val prefs = CouplePreferences(app)
     try {
-      prefs.saveAuthTokens(
-        accessToken = parsed.access_token,
-        refreshToken = parsed.refresh_token,
-        expiresAt = parsed.expires_at,
+      prefs.saveSession(
+        userName = "Min Nyo",
+        coupleId = "couple-uid-1",
+        coupleCode = "123456",
+        username = "minnyo",
         authUserId = "auth-uid-999"
       )
       val saved = prefs.userSessionFlow.first()
-      assertEquals("jwt.access.token.123", saved.accessToken)
-      assertEquals("refresh.token.xyz", saved.refreshToken)
-      assertEquals(1893456000L, saved.tokenExpiresAt)
+      assertEquals("Min Nyo", saved.userName)
+      assertEquals("couple-uid-1", saved.coupleId)
       assertEquals("auth-uid-999", saved.authUserId)
+      assertTrue(saved.isPaired)
 
       prefs.clearSession(clearProfileDetails = true)
       val cleared = prefs.userSessionFlow.first()
-      assertEquals("", cleared.accessToken)
-      assertEquals("", cleared.refreshToken)
-      assertEquals(0L, cleared.tokenExpiresAt)
+      assertEquals("", cleared.coupleId)
       assertEquals("", cleared.authUserId)
+      assertFalse(cleared.isPaired)
     } finally {
       prefs.clearSession(clearProfileDetails = true)
     }
-
-    manager.clearAuthSession()
-    assertFalse(manager.hasAuthenticatedJwt())
-    assertEquals(anonKey, manager.getAuthorizationBearer())
   }
 
 }

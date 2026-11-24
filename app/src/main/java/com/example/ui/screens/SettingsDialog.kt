@@ -27,12 +27,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MarkEmailRead
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -42,15 +40,12 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
-import com.example.data.supabase.SupabaseClientManager
+import com.example.data.model.AuthState
 import com.example.ui.components.SetLoveDateDialog
 import com.example.util.FormatUtils
 import com.example.util.PermissionHelper
@@ -95,6 +90,7 @@ fun SettingsDialog(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val userSession by viewModel.userSession.collectAsStateWithLifecycle()
+    val authState by viewModel.authState.collectAsStateWithLifecycle()
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
     val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
     var showDisconnectConfirm by remember { mutableStateOf(false) }
@@ -103,17 +99,6 @@ fun SettingsDialog(
     var showSetPinDialog by remember { mutableStateOf(false) }
     var showRemovePinConfirm by remember { mutableStateOf(false) }
 
-    var supabaseUrlInput by remember(userSession.customSupabaseUrl) {
-        mutableStateOf(
-            userSession.customSupabaseUrl.ifBlank { viewModel.getEffectiveSupabaseUrl() }
-        )
-    }
-    var supabaseKeyInput by remember(userSession.customSupabaseKey) {
-        mutableStateOf(
-            userSession.customSupabaseKey.ifBlank { viewModel.getEffectiveSupabaseKey() }
-        )
-    }
-    var showSupabaseKey by remember { mutableStateOf(false) }
     var isTestingConnection by remember { mutableStateOf(false) }
     var connectionTestResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
 
@@ -615,10 +600,10 @@ fun SettingsDialog(
                             }
                         }
 
-                        // 3. OTP Email Service Status
+                        // 3. Row-Level Security & Supabase Auth Info
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = if (viewModel.isMailSenderConfigured) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f),
+                            color = Color(0xFFE8F5E9),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
@@ -628,36 +613,31 @@ fun SettingsDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.MarkEmailRead,
+                                    imageVector = Icons.Default.Shield,
                                     contentDescription = null,
-                                    tint = if (viewModel.isMailSenderConfigured) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary,
+                                    tint = Color(0xFF2E7D32),
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column {
                                     Text(
-                                        text = if (viewModel.isMailSenderConfigured) "OTP Mail Sender Active" else "OTP Mail Sender Not Linked",
+                                        text = "Supabase Auth + RLS Active",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 13.sp,
-                                        color = if (viewModel.isMailSenderConfigured) Color(0xFF1B5E20) else MaterialTheme.colorScheme.onSurface
+                                        color = Color(0xFF1B5E20)
                                     )
                                     Text(
-                                        text = if (viewModel.isMailSenderConfigured) {
-                                            "Sending OTPs from ${viewModel.configuredSenderEmail}"
-                                        } else {
-                                            "Add SMTP_EMAIL & SMTP_APP_PASSWORD in AI Studio Secrets"
-                                        },
+                                        text = "Scoped by verified couple profile & private storage signed URLs",
                                         fontSize = 11.sp,
-                                        color = if (viewModel.isMailSenderConfigured) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = Color(0xFF2E7D32)
                                     )
                                 }
                             }
                         }
-
                     }
                 }
 
-                // Supabase Backend URL, Key & Connection Diagnostic Card
+                // Read-Only Supabase Backend Server Status & Connection Diagnostic Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
@@ -672,7 +652,6 @@ fun SettingsDialog(
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        val isCustom = userSession.customSupabaseUrl.isNotBlank() || userSession.customSupabaseKey.isNotBlank()
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -704,65 +683,25 @@ fun SettingsDialog(
                                         fontSize = 14.sp
                                     )
                                     Text(
-                                        text = "Host: ${viewModel.getActiveSupabaseHost().ifBlank { "Not set" }}",
+                                        text = "Host: ${viewModel.getActiveSupabaseHost().ifBlank { "Configured via BuildConfig" }}",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
                             Surface(
-                                color = if (isCustom) Color(0xFFFFF3E0) else Color(0xFFE8F5E9),
+                                color = Color(0xFFE8F5E9),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text(
-                                    text = if (isCustom) "Custom" else "Default",
+                                    text = "RLS Protected",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isCustom) Color(0xFFE65100) else Color(0xFF2E7D32),
+                                    color = Color(0xFF2E7D32),
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                 )
                             }
                         }
-
-                        OutlinedTextField(
-                            value = supabaseUrlInput,
-                            onValueChange = {
-                                supabaseUrlInput = it
-                                connectionTestResult = null
-                            },
-                            label = { Text("Supabase Project URL") },
-                            placeholder = { Text("https://your-project.supabase.co") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("settings_supabase_url_input"),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        OutlinedTextField(
-                            value = supabaseKeyInput,
-                            onValueChange = {
-                                supabaseKeyInput = it
-                                connectionTestResult = null
-                            },
-                            label = { Text("Supabase Anon Key") },
-                            placeholder = { Text("eyJ...") },
-                            singleLine = true,
-                            visualTransformation = if (showSupabaseKey) VisualTransformation.None else PasswordVisualTransformation(),
-                            trailingIcon = {
-                                IconButton(onClick = { showSupabaseKey = !showSupabaseKey }) {
-                                    Icon(
-                                        imageVector = if (showSupabaseKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                        contentDescription = "Toggle Supabase Anon Key visibility"
-                                    )
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("settings_supabase_key_input"),
-                            shape = RoundedCornerShape(12.dp)
-                        )
 
                         connectionTestResult?.let { (ok, msg) ->
                             Surface(
@@ -780,71 +719,28 @@ fun SettingsDialog(
                             }
                         }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    val normalized = SupabaseClientManager.normalizeSupabaseUrl(supabaseUrlInput)
-                                    supabaseUrlInput = normalized
-                                    isTestingConnection = true
-                                    connectionTestResult = null
-                                    viewModel.updateSupabaseCredentials(normalized, supabaseKeyInput) {
-                                        viewModel.testSupabaseConnection { ok, msg ->
-                                            isTestingConnection = false
-                                            connectionTestResult = ok to msg
-                                        }
-                                    }
-                                },
-                                enabled = !isTestingConnection,
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("settings_test_supabase_button")
-                            ) {
-                                if (isTestingConnection) {
-                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                                } else {
-                                    Icon(Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(15.dp))
+                        OutlinedButton(
+                            onClick = {
+                                isTestingConnection = true
+                                connectionTestResult = null
+                                viewModel.testSupabaseConnection { ok, msg ->
+                                    isTestingConnection = false
+                                    connectionTestResult = ok to msg
                                 }
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(if (isTestingConnection) "Testing..." else "Test DNS & API", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            },
+                            enabled = !isTestingConnection,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("settings_test_supabase_button")
+                        ) {
+                            if (isTestingConnection) {
+                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(15.dp))
                             }
-
-                            Button(
-                                onClick = {
-                                    val normalized = SupabaseClientManager.normalizeSupabaseUrl(supabaseUrlInput)
-                                    supabaseUrlInput = normalized
-                                    viewModel.updateSupabaseCredentials(normalized, supabaseKeyInput) { savedMsg ->
-                                        Toast.makeText(context, savedMsg, Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("settings_save_supabase_button")
-                            ) {
-                                Text("Save Backend", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        if (isCustom) {
-                            TextButton(
-                                onClick = {
-                                    viewModel.updateSupabaseCredentials("", "") { resetMsg ->
-                                        supabaseUrlInput = viewModel.getDefaultSupabaseUrl()
-                                        supabaseKeyInput = viewModel.getEffectiveSupabaseKey()
-                                        connectionTestResult = null
-                                        Toast.makeText(context, resetMsg, Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("settings_reset_supabase_button")
-                            ) {
-                                Text("Reset to App Default Credentials", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (isTestingConnection) "Testing..." else "Test Connection", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1006,7 +902,7 @@ fun SettingsDialog(
                                         fontSize = 12.sp
                                     )
                                     Text(
-                                        text = "Active (Supabase sync, OTP mail & Leaflet OpenStreetMap)",
+                                        text = "Active (Supabase sync & Leaflet OpenStreetMap)",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -1058,7 +954,7 @@ fun SettingsDialog(
                 }
 
                 // Logout & Unpair Options
-                if (userSession.isPaired) {
+                if (authState is AuthState.SignedIn || userSession.isPaired) {
                     OutlinedButton(
                         onClick = { showLogoutConfirm = true },
                         shape = RoundedCornerShape(12.dp),

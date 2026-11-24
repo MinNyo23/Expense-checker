@@ -28,6 +28,7 @@ data class UserSession(
     val monthlyBudget: Double = 1000000.0,
     val savingsGoalsJson: String = "",
     val recurringBillsJson: String = "",
+    val movieWatchlistJson: String = "",
     val appPin: String = "",
     val isScreenSecurityEnabled: Boolean = false,
     val userEmail: String = "",
@@ -57,6 +58,7 @@ class CouplePreferences(private val context: Context) {
         val KEY_MONTHLY_BUDGET = doublePreferencesKey("monthly_budget")
         val KEY_SAVINGS_GOALS = stringPreferencesKey("savings_goals")
         val KEY_RECURRING_BILLS = stringPreferencesKey("recurring_bills")
+        val KEY_MOVIE_WATCHLIST = stringPreferencesKey("movie_watchlist")
         val KEY_APP_PIN = stringPreferencesKey("app_pin")
         val KEY_SCREEN_SECURITY = booleanPreferencesKey("screen_security")
         val KEY_USER_EMAIL = stringPreferencesKey("user_email")
@@ -83,6 +85,7 @@ class CouplePreferences(private val context: Context) {
             monthlyBudget = preferences[KEY_MONTHLY_BUDGET] ?: 1000000.0,
             savingsGoalsJson = preferences[KEY_SAVINGS_GOALS] ?: "",
             recurringBillsJson = preferences[KEY_RECURRING_BILLS] ?: "",
+            movieWatchlistJson = preferences[KEY_MOVIE_WATCHLIST] ?: "",
             appPin = preferences[KEY_APP_PIN] ?: "",
             isScreenSecurityEnabled = preferences[KEY_SCREEN_SECURITY] ?: false,
             userEmail = preferences[KEY_USER_EMAIL] ?: "",
@@ -197,6 +200,12 @@ class CouplePreferences(private val context: Context) {
         }
     }
 
+    suspend fun updateMovieWatchlist(json: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_MOVIE_WATCHLIST] = json
+        }
+    }
+
     suspend fun updateAppPin(pin: String) {
         context.dataStore.edit { prefs ->
             if (pin.isBlank()) {
@@ -232,6 +241,7 @@ class CouplePreferences(private val context: Context) {
                 prefs.remove(KEY_PARTNER_DOB)
                 prefs.remove(KEY_PARTNER_AVATAR_URL)
                 prefs.remove(KEY_APP_PIN)
+                prefs.remove(KEY_MOVIE_WATCHLIST)
             }
         }
     }

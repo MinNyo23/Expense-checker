@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
+
 package com.example.data.repository
 
 import com.example.data.model.AuthResult
@@ -11,7 +13,9 @@ import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
@@ -47,26 +51,30 @@ class SupabaseAuthDataSource(
         get() = clientProvider.isConfigured
 
     override val rawSessionStatus: Flow<RawSessionStatus>
-        get() = clientProvider.auth.sessionStatus.map { status ->
-            when (status) {
-                is SessionStatus.Initializing -> RawSessionStatus.Initializing
-                is SessionStatus.Authenticated -> {
-                    val user = status.session.user
-                    val uid = user?.id.orEmpty()
-                    if (uid.isNotBlank()) {
-                        RawSessionStatus.Authenticated(
-                            AuthSessionInfo(
-                                authUserId = uid,
-                                email = user?.email.orEmpty(),
-                                expiresAtEpochSec = status.session.expiresAt.epochSeconds
+        get() = if (!clientProvider.isConfigured) {
+            flowOf(RawSessionStatus.NotAuthenticated)
+        } else {
+            clientProvider.auth.sessionStatus.map { status ->
+                when (status) {
+                    is SessionStatus.Initializing -> RawSessionStatus.Initializing
+                    is SessionStatus.Authenticated -> {
+                        val user = status.session.user
+                        val uid = user?.id.orEmpty()
+                        if (uid.isNotBlank()) {
+                            RawSessionStatus.Authenticated(
+                                AuthSessionInfo(
+                                    authUserId = uid,
+                                    email = user?.email.orEmpty(),
+                                    expiresAtEpochSec = status.session.expiresAt.epochSeconds
+                                )
                             )
-                        )
-                    } else {
-                        RawSessionStatus.NotAuthenticated
+                        } else {
+                            RawSessionStatus.NotAuthenticated
+                        }
                     }
+                    is SessionStatus.RefreshFailure -> RawSessionStatus.RefreshFailed
+                    is SessionStatus.NotAuthenticated -> RawSessionStatus.NotAuthenticated
                 }
-                is SessionStatus.RefreshFailure -> RawSessionStatus.RefreshFailed
-                is SessionStatus.NotAuthenticated -> RawSessionStatus.NotAuthenticated
             }
         }
 
@@ -144,13 +152,14 @@ class SupabaseAuthDataSource(
  * Manages Supabase Auth lifecycle, profile linkage verification, and reactive AuthState.
  * Does NOT touch legacy user_accounts or bypass RLS.
  */
-class AuthRepository(
+open class AuthRepository(
     private val authDataSource: AuthDataSource,
     private val profileRepository: ProfileRepository
 ) {
-    private val _authState = MutableStateFlow<AuthState>(AuthState.SignedOut)
+    protected val _authState = MutableStateFlow<AuthState>(AuthState.SignedOut)
+    val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    fun observeAuthState(): Flow<AuthState> = _authState.asStateFlow()
+    fun observeAuthState(): Flow<AuthState> = authState
 
     val currentAuthState: AuthState
         get() = _authState.value

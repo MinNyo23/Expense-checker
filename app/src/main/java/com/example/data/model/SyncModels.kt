@@ -38,6 +38,7 @@ data class CachedCoupleSnapshot(
     val location_history: List<LocationHistoryItem> = emptyList(),
     val device_sessions: List<DeviceSession> = emptyList(),
     val money_accounts: List<MoneyAccount> = emptyList(),
+    val movies: List<MovieItem> = emptyList(),
     val counts: CoupleSyncCounts = CoupleSyncCounts(),
     val last_synced_at_ms: Long = 0L,
     val pending_money_account_ids: Set<String> = emptySet(),

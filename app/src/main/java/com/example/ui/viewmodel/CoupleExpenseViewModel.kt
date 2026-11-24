@@ -21,6 +21,7 @@ import com.example.data.model.LiveLocation
 import com.example.data.model.LocationHistoryItem
 import com.example.data.model.MoneyAccount
 import com.example.data.model.MoneyAccountType
+import com.example.data.model.MovieItem
 import com.example.data.model.OwnerMoneySummary
 import com.example.data.model.RecurringBill
 import com.example.data.model.ResourceState
@@ -257,6 +258,9 @@ class CoupleExpenseViewModel(application: Application) : AndroidViewModel(applic
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), defaultRecurringBills())
 
+    private val _movies = MutableStateFlow<List<MovieItem>>(emptyList())
+    val movies: StateFlow<List<MovieItem>> = _movies.asStateFlow()
+
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
@@ -288,6 +292,13 @@ class CoupleExpenseViewModel(application: Application) : AndroidViewModel(applic
                 if (!initialSession.isPinSet) {
                     _isAppUnlocked.value = true
                 }
+                if (initialSession.movieWatchlistJson.isNotBlank()) {
+                    runCatching {
+                        json.decodeFromString<List<MovieItem>>(initialSession.movieWatchlistJson)
+                    }.onSuccess { restored ->
+                        _movies.value = restored
+                    }
+                }
                 authRepository.refreshOrRestoreSession()
             } catch (e: CancellationException) {
                 throw e
@@ -296,6 +307,19 @@ class CoupleExpenseViewModel(application: Application) : AndroidViewModel(applic
             } finally {
                 _isSessionInitializing.value = false
             }
+        }
+
+        // Keep movies synchronized with persisted DataStore watchlist updates
+        viewModelScope.launch {
+            userSession
+                .map { it.movieWatchlistJson }
+                .distinctUntilChanged()
+                .collect { rawJson ->
+                    if (rawJson.isNotBlank()) {
+                        runCatching { json.decodeFromString<List<MovieItem>>(rawJson) }
+                            .onSuccess { decoded -> _movies.value = decoded }
+                    }
+                }
         }
 
         // 2. React to verified AuthState transitions (RLS-scoped loading)
@@ -314,6 +338,11 @@ class CoupleExpenseViewModel(application: Application) : AndroidViewModel(applic
                             authUserId = state.authUserId
                         )
                         repository.hydrateFromLocalCache(state.coupleId)
+                        val cachedMovies = localCache.getSnapshot(state.coupleId)?.movies.orEmpty()
+                        if (cachedMovies.isNotEmpty() && _movies.value.isEmpty()) {
+                            _movies.value = cachedMovies
+                            preferences.updateMovieWatchlist(json.encodeToString(cachedMovies))
+                        }
                         repository.initCoupleSession(state.coupleId)
                         launch { loadCoupleExpenses() }
                         launch { loadCoupleMemos() }
@@ -1093,6 +1122,70 @@ class CoupleExpenseViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
+    // Movie Watch Later & Finished List Methods
+    fun addMovieToWatchLater(title: String, note: String = "") {
+        val cleanTitle = title.trim()
+        if (cleanTitle.isBlank()) {
+            _userMessage.value = "Please enter a movie name."
+            return
+        }
+        val session = userSession.value
+        val newMovie = MovieItem(
+            id = UUID.randomUUID().toString(),
+            title = cleanTitle,
+            isWatched = false,
+            addedBy = session.userName.ifBlank { "You" },
+            note = note.trim(),
+            addedAt = SupabaseRepository.getTodayDate(),
+            watchedAt = ""
+        )
+        val updatedList = listOf(newMovie) + _movies.value
+        persistMoviesList(updatedList)
+        _userMessage.value = "Added '$cleanTitle' to Watch Later 🎬"
+    }
+
+    fun markMovieAsWatched(movieId: String) {
+        val currentList = _movies.value
+        val target = currentList.firstOrNull { it.id == movieId } ?: return
+        val updatedMovie = target.copy(
+            isWatched = true,
+            watchedAt = SupabaseRepository.getTodayDate()
+        )
+        val updatedList = listOf(updatedMovie) + currentList.filterNot { it.id == movieId }
+        persistMoviesList(updatedList)
+        _userMessage.value = "Moved '${target.title}' to Finished List ✅"
+    }
+
+    fun moveMovieToWatchLater(movieId: String) {
+        val currentList = _movies.value
+        val target = currentList.firstOrNull { it.id == movieId } ?: return
+        val updatedMovie = target.copy(
+            isWatched = false,
+            watchedAt = ""
+        )
+        val updatedList = listOf(updatedMovie) + currentList.filterNot { it.id == movieId }
+        persistMoviesList(updatedList)
+        _userMessage.value = "Moved '${target.title}' back to Watch Later 🎬"
+    }
+
+    fun deleteMovie(movieId: String) {
+        val updatedList = _movies.value.filterNot { it.id == movieId }
+        persistMoviesList(updatedList)
+        _userMessage.value = "Movie removed from list"
+    }
+
+    private fun persistMoviesList(list: List<MovieItem>) {
+        _movies.value = list
+        val coupleId = userSession.value.coupleId
+        viewModelScope.launch {
+            val encoded = json.encodeToString(list)
+            preferences.updateMovieWatchlist(encoded)
+            if (coupleId.isNotBlank()) {
+                localCache.updateSnapshot(coupleId) { it.copy(movies = list) }
+            }
+        }
+    }
+
     fun refresh() {
         val state = authState.value
         val session = userSession.value
@@ -1249,6 +1342,7 @@ class CoupleExpenseViewModel(application: Application) : AndroidViewModel(applic
                 repository.clearSessionState(coupleIdToClearCache = coupleId, clearDiskCache = false)
                 _expensesState.value = ResourceState.Empty
                 _memosState.value = ResourceState.Empty
+                _movies.value = emptyList()
                 _signedMemoUrls.value = emptyMap()
                 _memoImageErrors.value = emptyMap()
                 preferences.clearSession(clearProfileDetails = true)

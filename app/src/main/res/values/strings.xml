@@ -1,3 +1,13 @@
 <resources>
     <string name="app_name">Couple Expense</string>
+    <string name="movie_watchlist_title">Movie Watchlist</string>
+    <string name="movie_tab_watch_later">Watch Later</string>
+    <string name="movie_tab_finished">Finished</string>
+    <string name="movie_name_label">Movie Name</string>
+    <string name="movie_note_label">Note (genre, platform, optional)</string>
+    <string name="movie_add_button">Add to Watch Later</string>
+    <string name="movie_mark_finished">Finished</string>
+    <string name="movie_move_watch_later">Watch Again</string>
+    <string name="movie_empty_watch_later">No movies in Watch Later yet.\nAdd a movie above for your next movie night!</string>
+    <string name="movie_empty_finished">No finished movies yet.\nTap Finished on any watched movie to move it here.</string>
 </resources>

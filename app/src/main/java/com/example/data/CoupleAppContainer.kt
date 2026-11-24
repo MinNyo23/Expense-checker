@@ -8,7 +8,7 @@ import com.example.data.repository.ExpenseRepository
 import com.example.data.repository.ImageStorageRepository
 import com.example.data.repository.MemoRepository
 import com.example.data.repository.ProfileRepository
-import com.example.data.repository.SupabaseAuthDataSource
+import com.example.data.repository.SupabaseAuthRepository
 import com.example.data.repository.SupabaseExpenseDataSource
 import com.example.data.repository.SupabaseImageStorageDataSource
 import com.example.data.repository.SupabaseMemoDataSource
@@ -36,7 +36,7 @@ object CoupleAppContainer {
     private var profileRepositoryInstance: ProfileRepository? = null
 
     @Volatile
-    private var authRepositoryInstance: AuthRepository? = null
+    private var authRepositoryInstance: SupabaseAuthRepository? = null
 
     @Volatile
     private var imageStorageRepositoryInstance: ImageStorageRepository? = null
@@ -91,16 +91,18 @@ object CoupleAppContainer {
         }
     }
 
-    fun getAuthRepository(context: Context): AuthRepository {
+    fun getSupabaseAuthRepository(context: Context): SupabaseAuthRepository {
         return authRepositoryInstance ?: synchronized(this) {
-            authRepositoryInstance ?: AuthRepository(
-                authDataSource = SupabaseAuthDataSource(getClientProvider()),
+            authRepositoryInstance ?: SupabaseAuthRepository(
+                clientProvider = getClientProvider(),
                 profileRepository = getProfileRepository(context)
             ).also {
                 authRepositoryInstance = it
             }
         }
     }
+
+    fun getAuthRepository(context: Context): AuthRepository = getSupabaseAuthRepository(context)
 
     fun getImageStorageRepository(context: Context): ImageStorageRepository {
         val authRepo = getAuthRepository(context)

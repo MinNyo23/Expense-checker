@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
@@ -89,6 +90,7 @@ import com.example.ui.components.ExpenseItemCard
 import com.example.ui.components.MemosDialog
 import com.example.ui.components.MilestonesDialog
 import com.example.ui.components.MonthlyReportDialog
+import com.example.ui.components.MovieWatchlistDialog
 import com.example.ui.components.MyMoneyModal
 import com.example.ui.components.RecurringBillsDialog
 import com.example.ui.components.SavingsGoalsDialog
@@ -121,6 +123,7 @@ fun HomeScreen(
     val summary by viewModel.dashboardSummary.collectAsStateWithLifecycle()
     val savingsGoals by viewModel.savingsGoals.collectAsStateWithLifecycle()
     val recurringBills by viewModel.recurringBills.collectAsStateWithLifecycle()
+    val movies by viewModel.movies.collectAsStateWithLifecycle()
     val memos by viewModel.memos.collectAsStateWithLifecycle()
     val memosState by viewModel.memosState.collectAsStateWithLifecycle()
     val signedMemoUrls by viewModel.signedMemoUrls.collectAsStateWithLifecycle()
@@ -135,6 +138,7 @@ fun HomeScreen(
     var showMilestonesDialog by remember { mutableStateOf(false) }
     var showMonthlyReportDialog by remember { mutableStateOf(false) }
     var showMemosDialog by remember { mutableStateOf(false) }
+    var showMovieWatchlistDialog by remember { mutableStateOf(false) }
     var showMyMoneyModal by remember { mutableStateOf(false) }
     var openPartnerMoneyTab by remember { mutableStateOf(false) }
 
@@ -1429,6 +1433,73 @@ fun HomeScreen(
                             }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Row 3: Couple Movie Watchlist (Watch Later & Finished)
+                    val watchLaterCount = movies.count { !it.isWatched }
+                    val finishedCount = movies.count { it.isWatched }
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showMovieWatchlistDialog = true }
+                            .testTag("hub_movies_button"),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primaryContainer),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Movie,
+                                        contentDescription = "Movie Watchlist",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Movie Watchlist 🎬",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "$watchLaterCount watch later • $finishedCount finished",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                            ) {
+                                Text(
+                                    text = "Open List",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1999,6 +2070,25 @@ fun HomeScreen(
         MemosDialog(
             viewModel = viewModel,
             onDismiss = { showMemosDialog = false }
+        )
+    }
+
+    if (showMovieWatchlistDialog) {
+        MovieWatchlistDialog(
+            movies = movies,
+            onAddMovie = { title, note ->
+                viewModel.addMovieToWatchLater(title, note)
+            },
+            onMarkWatched = { movieId ->
+                viewModel.markMovieAsWatched(movieId)
+            },
+            onMoveToWatchLater = { movieId ->
+                viewModel.moveMovieToWatchLater(movieId)
+            },
+            onDeleteMovie = { movieId ->
+                viewModel.deleteMovie(movieId)
+            },
+            onDismiss = { showMovieWatchlistDialog = false }
         )
     }
 
