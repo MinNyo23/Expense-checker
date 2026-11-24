@@ -26,6 +26,12 @@ The signup screen now expects Supabase Auth to send a six-digit email verificati
 
 After a successful signup, the app displays the code entry dialog and supports sending a new signup code. After verification, the app resolves the authenticated user against `profiles`; an unlinked user remains on the account-pending screen rather than bypassing the backend link check.
 
+### Email delivery troubleshooting
+
+The live Auth logs show successful `mail.send` events for confirmation emails and successful `/signup` requests. This confirms that the Android request reaches Supabase and Supabase accepts the email request; it does not guarantee that the message reaches the inbox. The same logs also show repeated signup/recovery attempts hitting email throttling.
+
+The built-in Supabase email provider allows only a small number of messages per hour. The mobile resend button now enforces a 60-second cooldown and displays a specific rate-limit message instead of a generic failure. For real users, configure custom SMTP in the Supabase Dashboard, verify the sender domain, and check spam/quarantine filtering. Do not repeatedly press Create Account or Resend while testing the same address.
+
 ### Forgot-password email
 
 Forgot password uses Supabase `resetPasswordForEmail`, which sends a password recovery **link**, not a six-digit recovery OTP. Users should open the link from the email app or browser and check spam/promotions folders if delivery is delayed. The app shows this distinction explicitly so the signup OTP and password recovery flows are not confused.
