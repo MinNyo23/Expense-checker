@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +35,14 @@ fun SignupEmailOtpDialog(
     var isBusy by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
+    var resendCooldownSeconds by remember { mutableStateOf(0) }
+
+    LaunchedEffect(resendCooldownSeconds) {
+        if (resendCooldownSeconds > 0) {
+            kotlinx.coroutines.delay(1_000)
+            resendCooldownSeconds -= 1
+        }
+    }
 
     AlertDialog(
         onDismissRequest = { if (!isBusy) onDismiss() },
@@ -97,11 +106,12 @@ fun SignupEmailOtpDialog(
                         isBusy = false
                         isError = !success
                         feedback = message
+                        if (success) resendCooldownSeconds = 60
                     }
                 },
-                enabled = !isBusy
+                enabled = !isBusy && resendCooldownSeconds == 0
             ) {
-                Text("Resend code")
+                Text(if (resendCooldownSeconds == 0) "Resend code" else "Resend in ${resendCooldownSeconds}s")
             }
         }
     )

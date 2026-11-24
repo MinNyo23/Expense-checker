@@ -169,6 +169,16 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun auth_email_rate_limit_is_explained_without_raw_server_details() {
+        val message = com.example.data.model.SupabaseErrorMapper.toUserMessage(
+            IllegalStateException("429: email rate limit exceeded")
+        )
+        assertTrue(message.contains("rate-limited", ignoreCase = true))
+        assertTrue(message.contains("60 seconds"))
+        assertFalse(message.contains("email rate limit exceeded", ignoreCase = true))
+    }
+
+    @Test
     fun parse_response_list_handles_array_single_object_and_empty() {
         val manager = com.example.data.supabase.SupabaseClientManager()
         

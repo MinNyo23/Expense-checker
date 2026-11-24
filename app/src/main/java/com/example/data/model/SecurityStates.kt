@@ -96,6 +96,13 @@ sealed class SupabaseDomainError(
     class NetworkUnavailable(cause: Throwable? = null) :
         SupabaseDomainError("network_unavailable", "Network unavailable. Please check your connection and retry.", cause)
 
+    class RateLimited(cause: Throwable? = null) :
+        SupabaseDomainError(
+            "rate_limited",
+            "Email sending is temporarily rate-limited. Wait at least 60 seconds before trying again; configure custom SMTP for higher production limits.",
+            cause
+        )
+
     class ValidationError(detail: String) :
         SupabaseDomainError("validation_error", detail, null)
 }
@@ -127,6 +134,10 @@ object SupabaseErrorMapper {
 
         val raw = (throwable.message ?: "").lowercase()
         return when {
+            raw.contains("rate limit") ||
+                raw.contains("too many requests") ||
+                raw.contains("429") -> SupabaseDomainError.RateLimited(throwable)
+
             raw.contains("unable to resolve host") ||
                 raw.contains("failed to connect") ||
                 raw.contains("timeout") ||
