@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.viewmodel.CoupleExpenseViewModel
 
 /**
- * Sends a Supabase Auth password recovery email via AuthRepository.resetPassword(email).
+ * Sends a Supabase Auth password recovery link via AuthRepository.resetPassword(email).
  */
 @Composable
 fun ForgotPasswordOtpDialog(
@@ -94,7 +94,7 @@ fun ForgotPasswordOtpDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Enter your registered email address and we will send a Supabase password reset link to your inbox.",
+                        text = "Enter your registered email address and we will send a password reset link. This flow uses a link, not an OTP. Open it from your email app or browser to choose a new password.",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -124,6 +124,11 @@ fun ForgotPasswordOtpDialog(
                         color = if (isFeedbackError) MaterialTheme.colorScheme.error else Color(0xFF2E7D32)
                     )
                 }
+                Text(
+                    text = "If it does not arrive within a few minutes, check spam, promotions, and any email filters. You can resend the reset email after closing this message.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         },
         confirmButton = {
@@ -142,7 +147,7 @@ fun ForgotPasswordOtpDialog(
                 },
                 enabled = !isBusy && emailInput.isNotBlank(),
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.testTag("send_otp_button")
+                modifier = Modifier.testTag("send_reset_email_button")
             ) {
                 if (isBusy) {
                     CircularProgressIndicator(

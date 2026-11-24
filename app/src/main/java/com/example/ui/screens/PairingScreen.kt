@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.model.AuthState
 import com.example.ui.components.ForgotPasswordOtpDialog
+import com.example.ui.components.SignupEmailOtpDialog
 import com.example.ui.theme.RomanticAppBackground
 import com.example.ui.viewmodel.CoupleExpenseViewModel
 
@@ -93,6 +94,7 @@ fun PairingScreen(
     var isLoading by remember { mutableStateOf(false) }
     var inlineError by remember { mutableStateOf<String?>(null) }
     var showForgotPasswordDialog by remember { mutableStateOf(false) }
+    var signupOtpEmail by remember { mutableStateOf<String?>(null) }
 
     val scrollState = rememberScrollState()
     val busy = isLoading || authState is AuthState.SigningIn
@@ -440,7 +442,7 @@ fun PairingScreen(
                         )
 
                         Text(
-                            text = "After signing up, confirm your email if required and ensure your profile is linked to your couple workspace on the backend.",
+                            text = "After signing up, enter the six-digit code sent to your email. Your account will open after verification and profile linking.",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -456,6 +458,9 @@ fun PairingScreen(
                                 viewModel.signUp(emailInput, passwordInput) { success, msg ->
                                     isLoading = false
                                     if (success) {
+                                        if (viewModel.authState.value is AuthState.EmailConfirmationRequired) {
+                                            signupOtpEmail = emailInput.trim().lowercase()
+                                        }
                                         Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                     } else {
                                         inlineError = msg
@@ -568,6 +573,20 @@ fun PairingScreen(
                 selectedTab = 0
                 inlineError = null
             }
+        )
+    }
+
+    signupOtpEmail?.let { email ->
+        SignupEmailOtpDialog(
+            viewModel = viewModel,
+            email = email,
+            onVerified = {
+                signupOtpEmail = null
+                passwordInput = ""
+                confirmPasswordInput = ""
+                Toast.makeText(context, "Email verified. Welcome to Couple Expense!", Toast.LENGTH_LONG).show()
+            },
+            onDismiss = { signupOtpEmail = null }
         )
     }
 }

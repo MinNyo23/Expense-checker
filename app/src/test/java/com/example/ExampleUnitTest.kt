@@ -3,9 +3,11 @@ package com.example
 import com.example.data.model.Couple
 import com.example.data.model.Expense
 import com.example.data.model.ExpenseCategory
+import com.example.data.repository.isValidSignupOtpToken
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -150,12 +152,20 @@ class ExampleUnitTest {
         assertTrue(!mapped.contains("password_hash"))
         assertTrue(!mapped.contains("user_accounts"))
         assertTrue(!mapped.contains("eyJ"))
-
         val sanitized = com.example.data.model.SupabaseErrorMapper.sanitizeMessage(
             "SELECT * FROM expenses WHERE jwt='eyJhbGciOiJIUzI1NiJ9.abc.def'",
             fallback = "Unable to load expenses."
         )
         assertEquals("Unable to load expenses.", sanitized)
+    }
+
+    @Test
+    fun signup_otp_requires_exactly_six_digits() {
+        assertTrue(isValidSignupOtpToken("123456"))
+        assertFalse(isValidSignupOtpToken("12345"))
+        assertFalse(isValidSignupOtpToken("1234567"))
+        assertFalse(isValidSignupOtpToken("12a456"))
+        assertFalse(isValidSignupOtpToken(" 123456 "))
     }
 
     @Test

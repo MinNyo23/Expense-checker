@@ -557,6 +557,37 @@ class CoupleExpenseViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
+    fun verifySignupOtp(
+        email: String,
+        token: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            val result = authRepository.verifySignupOtp(email, token)
+            _isRefreshing.value = false
+            result.onSuccess { auth ->
+                onResult(true, auth.message.ifBlank { "Email verified successfully." })
+            }.onFailure { err ->
+                onResult(false, SupabaseErrorMapper.toUserMessage(err))
+            }
+        }
+    }
+
+    fun resendSignupOtp(
+        email: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = authRepository.resendSignupOtp(email)
+            result.onSuccess {
+                onResult(true, "A new verification code was sent. Check your inbox and spam folder.")
+            }.onFailure { err ->
+                onResult(false, SupabaseErrorMapper.toUserMessage(err))
+            }
+        }
+    }
+
     fun recheckAccountProfileLink(onComplete: (AuthState) -> Unit = {}) {
         viewModelScope.launch {
             _isRefreshing.value = true
