@@ -34,6 +34,12 @@ Forgot password uses Supabase `resetPasswordForEmail`, which sends a password re
 
 Expenses and memos are loaded with the verified profile's `couple_id`. The repositories reject a caller-provided couple ID that differs from the authenticated profile. Database authorization is enforced again by Supabase RLS.
 
+The production project was audited against the mobile repositories. The app uses the `profiles`, `couples`, `expenses`, `memos`, `live_locations`, `location_history`, `device_sessions`, `account_link_codes`, and `money_accounts` tables with the expected column names. The legacy `user_accounts` table remains locked by RLS and is not used by the Android Auth flow.
+
+Legacy password/account RPC functions are not used by the Android app. Their public API execution privileges are revoked in `supabase/migrations/20261124211100_harden_legacy_rpc_execution_and_fk_indexes.sql`. That migration also adds indexes for the `account_link_codes.couple_id`, `device_sessions.couple_id`, and `user_accounts.couple_id` foreign keys.
+
+Supabase's security advisor may still report that `user_accounts` has RLS enabled without policies. This is intentional while the table is retained for compatibility: no client should query it. Do not add an anonymous policy to make the warning disappear.
+
 ## Private images
 
 Images use the private `images` bucket. The repository validates the content signature and MIME type, limits files to 5 MiB, generates a UUID filename, and uploads only to:
@@ -51,3 +57,11 @@ The memo stores this object path in `memos.image_url`. The app creates a short-l
 - Keep `SUPABASE_URL` and `SUPABASE_ANON_KEY` in the Secrets Gradle Plugin or CI-provided BuildConfig values.
 - Never log passwords, access tokens, refresh tokens, or keys.
 - Backend schema and RLS migrations are managed in Supabase, not copied from the mobile settings screen.
+
+## Regional connectivity diagnostics
+
+The Settings screen's **Test Connection** button checks `https://<project-ref>.supabase.co/auth/v1/health` and now distinguishes common failures. A DNS failure suggests ISP/DNS filtering; a timeout or connection refusal suggests transport-level blocking; a TLS failure suggests device time or network interception; an HTTP response indicates that the endpoint is reachable and the problem is more likely project configuration or authorization.
+
+If the endpoint fails only on a Myanmar ISP, try another ISP or Private DNS first. Do not hard-code Supabase CDN IP addresses in the app because that breaks TLS and can become stale. A Supabase custom domain or an independently operated backend endpoint is required for a durable regional routing change.
+
+The Supabase Auth security advisor also reported leaked-password protection disabled. Enable that separately in the Supabase Dashboard under Auth password security; it cannot be safely enabled from this mobile repository migration.

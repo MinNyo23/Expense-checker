@@ -16,7 +16,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.ConnectionPool
 import okhttp3.Request
+import java.net.ConnectException
 import java.net.URI
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLHandshakeException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -99,13 +103,34 @@ class SupabaseClientProvider(
                 if (response.isSuccessful) {
                     true to "Connected securely to $host"
                 } else {
-                    false to "Server check returned status ${response.code}"
+                    false to "Supabase responded with HTTP ${response.code}. Check the project URL, API key, and Auth/RLS configuration."
                 }
             }
         } catch (e: Exception) {
             Log.w(tag, "Connection check failed for host '$host': ${e.javaClass.simpleName}")
-            false to SupabaseErrorMapper.toUserMessage(e)
+            false to connectionDiagnosticMessage(e)
         }
+    }
+
+    private fun connectionDiagnosticMessage(error: Throwable): String {
+        return when {
+            error.findCause<UnknownHostException>() != null ->
+                "DNS could not resolve $host. Try another ISP or Private DNS (dns.google / one.one.one.one); this may be a regional ISP block."
+            error.findCause<SocketTimeoutException>() != null || error.findCause<ConnectException>() != null ->
+                "Could not reach $host over HTTPS. Try another network or VPN, then contact your ISP if the problem continues."
+            error.findCause<SSLHandshakeException>() != null ->
+                "TLS validation failed while connecting to $host. Check the device date/time and network interception."
+            else -> SupabaseErrorMapper.toUserMessage(error)
+        }
+    }
+
+    private inline fun <reified T : Throwable> Throwable.findCause(): T? {
+        var current: Throwable? = this
+        while (current != null) {
+            if (current is T) return current
+            current = current.cause
+        }
+        return null
     }
 
     companion object {
