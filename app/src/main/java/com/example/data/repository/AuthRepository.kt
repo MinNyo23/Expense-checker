@@ -8,6 +8,7 @@ import com.example.data.model.AuthState
 import com.example.data.model.SupabaseDomainError
 import com.example.data.model.SupabaseErrorMapper
 import com.example.data.supabase.SupabaseClientProvider
+import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.Dispatchers
@@ -31,10 +32,14 @@ sealed interface RawSessionStatus {
     data object RefreshFailed : RawSessionStatus
 }
 
+internal fun isValidSignupOtpToken(token: String): Boolean = token.matches(Regex("^\\d{6}$"))
+
 interface AuthDataSource {
     val isConfigured: Boolean
     val rawSessionStatus: Flow<RawSessionStatus>
     suspend fun signUp(email: String, password: String): AuthSignUpOutcome
+    suspend fun verifySignupOtp(email: String, token: String): AuthSessionInfo
+    suspend fun resendSignupOtp(email: String)
     suspend fun signIn(email: String, password: String): AuthSessionInfo
     suspend fun signOut()
     suspend fun resetPassword(email: String)
@@ -96,6 +101,27 @@ class SupabaseAuthDataSource(
         } else {
             AuthSignUpOutcome.EmailConfirmationPending(email)
         }
+    }
+
+    override suspend fun verifySignupOtp(email: String, token: String): AuthSessionInfo = withContext(Dispatchers.IO) {
+        clientProvider.auth.verifyEmailOtp(
+            type = OtpType.Email.SIGNUP,
+            email = email,
+            token = token
+        )
+        val session = clientProvider.auth.currentSessionOrNull()
+            ?: throw SupabaseDomainError.AuthenticationRequired()
+        val uid = session.user?.id.orEmpty()
+        if (uid.isBlank()) throw SupabaseDomainError.AuthenticationRequired()
+        AuthSessionInfo(
+            authUserId = uid,
+            email = session.user?.email ?: email,
+            expiresAtEpochSec = session.expiresAt.epochSeconds
+        )
+    }
+
+    override suspend fun resendSignupOtp(email: String) = withContext(Dispatchers.IO) {
+        clientProvider.auth.resendEmail(OtpType.Email.SIGNUP, email)
     }
 
     override suspend fun signIn(email: String, password: String): AuthSessionInfo = withContext(Dispatchers.IO) {
@@ -186,7 +212,7 @@ open class AuthRepository(
                 is AuthSignUpOutcome.EmailConfirmationPending -> {
                     val state = AuthState.EmailConfirmationRequired(
                         email = outcome.email,
-                        message = "Check ${outcome.email} and confirm your email address, then sign in."
+                        message = "Check ${outcome.email} for the six-digit verification code and enter it to continue."
                     )
                     _authState.value = state
                     Result.success(
@@ -208,6 +234,40 @@ open class AuthRepository(
             val mapped = SupabaseErrorMapper.mapError(e)
             _authState.value = mapDomainErrorToAuthState(mapped, cleanEmail)
             Result.failure(mapped)
+        }
+    }
+
+    suspend fun verifySignupOtp(email: String, token: String): Result<AuthResult> {
+        val cleanEmail = email.trim().lowercase()
+        val cleanToken = token.trim()
+        if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+            return Result.failure(SupabaseDomainError.ValidationError("Please enter a valid email address."))
+        }
+        if (!isValidSignupOtpToken(cleanToken)) {
+            return Result.failure(SupabaseDomainError.ValidationError("Enter the six-digit code from your email."))
+        }
+        return try {
+            val session = authDataSource.verifySignupOtp(cleanEmail, cleanToken)
+            val nextState = resolveProfileAndBuildState(session)
+            _authState.value = nextState
+            toAuthResult(nextState)
+        } catch (e: Exception) {
+            val mapped = SupabaseErrorMapper.mapError(e)
+            _authState.value = mapDomainErrorToAuthState(mapped, cleanEmail)
+            Result.failure(mapped)
+        }
+    }
+
+    suspend fun resendSignupOtp(email: String): Result<Unit> {
+        val cleanEmail = email.trim().lowercase()
+        if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+            return Result.failure(SupabaseDomainError.ValidationError("Please enter a valid email address."))
+        }
+        return try {
+            authDataSource.resendSignupOtp(cleanEmail)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(SupabaseErrorMapper.mapError(e))
         }
     }
 
